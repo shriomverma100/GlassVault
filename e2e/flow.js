@@ -44,7 +44,7 @@ await page.close();
 // 2 — NGO submits MC-311
 const payoutsBefore = (await api("/api/state")).payouts.length;
 page = await open("asha", "/ngo");
-await page.getByText("MC-311").first().click();
+await page.getByText("MC-311", { exact: true }).first().click(); // the invoice card, not the next-action chip
 // a beneficiary batch can prove only one payout, so the NGO issues fresh cards for this invoice
 await page.getByPlaceholder("e.g. Wadgaon households").fill("MC-311 e2e households");
 await page.getByLabel("Cards").fill("5");
