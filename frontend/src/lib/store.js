@@ -260,7 +260,10 @@ export function AppProvider({ children }) {
         chain.providerA
           .getBlock("latest")
           .then((b) => {
-            const clockSkew = b ? b.timestamp - Math.floor(Date.now() / 1000) : snap.clockSkew;
+            // the chain clock may run AHEAD of the wall clock (time travel) but never behind: an idle local
+            // chain mines no blocks, yet its next block is stamped "now" — a stale latest block must not
+            // freeze countdowns or hide actions whose window has passed
+            const clockSkew = b ? Math.max(0, b.timestamp - Math.floor(Date.now() / 1000)) : snap.clockSkew;
             if (clockSkew !== snap.clockSkew) set({ clockSkew }); // no render when nothing changed
           })
           .catch(() => {});
@@ -270,7 +273,11 @@ export function AppProvider({ children }) {
     api
       .get("/api/auth/me")
       .then(({ user, keystore }) => !stop && user && signedIn(user, keystore, null))
-      .catch(() => {})
+      .catch((e) => {
+        // a server from before accounts existed: this page is newer than the running backend
+        if (!stop && /not found/i.test(e.message))
+          toast({ title: "The running server is out of date", body: "This page is newer than the backend you started. Stop it (Ctrl+C, or npm run stop) and run npm run start:prod — sign-up and sign-in need the current backend.", tone: "error", ms: 600_000 });
+      })
       .finally(() => !stop && set({ authReady: true }));
     loadDirectory();
     api.get("/api/events?limit=200").then((events) => !stop && set({ events }));

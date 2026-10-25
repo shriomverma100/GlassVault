@@ -4,9 +4,11 @@ import { useApp } from "../lib/store";
 import { HOME } from "../lib/wallet";
 import { Button, Field, Input } from "../components/ui/kit";
 import { discoverWallet } from "../lib/metamask";
+import { DEMO_ACCOUNTS } from "../lib/demo-accounts";
 
 export default function Login() {
-  const { login, loginWithMetaMask } = useApp("login", "loginWithMetaMask");
+  const { login, loginWithMetaMask, config } = useApp("login", "loginWithMetaMask", "config");
+  const localChains = config?.chainA?.chainId === 31337 && config?.chainB?.chainId === 31338;
   const navigate = useNavigate();
   const from = useLocation().state?.from;
   const [username, setUsername] = useState("");
@@ -81,7 +83,43 @@ export default function Login() {
           </Link>
         </p>
       </form>
+      {localChains && (
+        <DemoAccounts
+          onPick={(u, pw) => {
+            setUsername(u);
+            setPassword(pw);
+            setError(null);
+          }}
+        />
+      )}
     </AuthShell>
+  );
+}
+
+/// Seeded logins for the local chains, one per role — click a row to fill the form (it does not sign in).
+function DemoAccounts({ onPick }) {
+  return (
+    <details data-tour="login-demo" className="mt-8 rounded-[var(--radius-tile)] border border-hairline bg-paper">
+      <summary className="cursor-pointer px-5 py-4 text-[14px] font-medium">Demo accounts (local chains only)</summary>
+      <div className="border-t border-hairline px-2 py-2">
+        <p className="px-3 pt-1 pb-2 text-[13px] text-ash">Public test credentials for the local demo chain — click one to fill the form. Never use them on a real network.</p>
+        <ul className="flex flex-col">
+          {DEMO_ACCOUNTS.map(([username, , kind, displayName, password, shows]) => (
+            <li key={username}>
+              <button type="button" onClick={() => onPick(username, password)} className="grid w-full grid-cols-[1fr_auto] gap-x-4 rounded-[12px] px-3 py-2 text-left hover:bg-white">
+                <span className="text-[14px] font-medium">
+                  {displayName} <span className="font-normal text-ash">· {kind}</span>
+                </span>
+                <span className="font-mono text-[13px] text-ash">
+                  {username} / {password}
+                </span>
+                <span className="col-span-2 text-[13px] text-graphite">{shows}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
   );
 }
 

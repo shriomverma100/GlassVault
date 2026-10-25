@@ -13,14 +13,15 @@ const NAME_LABEL = { Donor: "Your name", NGO: "Organisation name", Vendor: "Busi
 export default function Signup() {
   const { signup, signupWithMetaMask, loginWithMetaMask, toast } = useApp("signup", "signupWithMetaMask", "loginWithMetaMask", "toast");
   const navigate = useNavigate();
-  const fromLogin = useLocation().state?.mm ?? null; // { signupToken, address } when sent here by "Continue with MetaMask"
+  const navState = useLocation().state;
+  const fromLogin = navState?.mm ?? null; // { signupToken, address } when sent here by "Continue with MetaMask"
   const [mode, setMode] = useState(fromLogin ? "metamask" : "password");
   const [mmSession, setMmSession] = useState(fromLogin);
   const [mmAvailable, setMmAvailable] = useState(undefined);
   useEffect(() => {
     discoverWallet().then(setMmAvailable);
   }, []);
-  const [kind, setKind] = useState("Donor");
+  const [kind, setKind] = useState(["Donor", "NGO", "Vendor", "Field", "Watcher"].includes(navState?.kind) ? navState.kind : "Donor"); // preselected by the landing page role cards
   const [form, setForm] = useState({ displayName: "", username: "", password: "", confirm: "" });
   const [step, setStep] = useState(null);
   const [error, setError] = useState(null);

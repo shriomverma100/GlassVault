@@ -28,10 +28,15 @@ export default function Tour() {
   const { pathname } = useLocation();
   const [step, setStep] = useState(null); // null = closed
   const [rect, setRect] = useState(null);
-  const steps = tourFor(user);
+  // steps are built when the tour starts, from this account's state at that moment (registered yet?
+  // donated yet?), and stay fixed while it runs
+  const [steps, setSteps] = useState(() => tourFor(user, state));
   const key = tourKey(user);
+  const live = useRef({ user, state });
+  live.current = { user, state };
 
   const start = useCallback(() => {
+    setSteps(tourFor(live.current.user, live.current.state));
     setRect(null);
     setStep(0);
   }, []);

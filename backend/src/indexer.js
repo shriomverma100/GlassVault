@@ -296,7 +296,8 @@ export class Indexer extends EventEmitter {
 
     const state = { ngos, lots, payouts, vendors, fieldPartners, batches, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
     // probabilistic evaluation chain — chain time, because local chains can run ahead of the wall clock
-    const now = (await this.providerA.getBlock("latest"))?.timestamp ?? Math.floor(Date.now() / 1000);
+    // chain time never behind the wall clock: an idle local chain's next block is stamped "now"
+    const now = Math.max((await this.providerA.getBlock("latest"))?.timestamp ?? 0, Math.floor(Date.now() / 1000));
     // the two non-chain inputs are published too, so anyone can re-run the formula on this snapshot
     state.chainTime = now;
     for (const p of payouts) p.receiptAvailable = Boolean(db.files?.[p.fileHash]);

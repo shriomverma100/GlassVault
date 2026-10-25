@@ -23,6 +23,9 @@
     "start:test": "node scripts/dev.mjs --prod --profile=test",
     "e2e:full": "node scripts/e2e.mjs",
     "confidence": "node backend/scripts/confidence.js",
-    "acceptance": "npm --prefix contracts run acceptance"
+    "acceptance": "npm --prefix contracts run acceptance",
+    "stop": "node scripts/stop.mjs",
+    "demo:kit": "node demo/make-kit.mjs",
+    "demo:rehearse": "node e2e/demo-rehearsal.js"
   }
 }

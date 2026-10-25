@@ -11,7 +11,24 @@ import ProofSpine from "../components/ProofSpine";
 import { CountUp, Funnel, HBars } from "../components/viz";
 import { fraudByReason, pipeline } from "../components/viz/data";
 import SankeyFlow from "../components/explore/SankeyFlow";
-import { ScaleIcon, VaultIcon, FingerprintIcon, InvoiceIcon, QrIcon, CrossIcon, CheckIcon } from "../components/icons";
+import { ScaleIcon, VaultIcon, FingerprintIcon, InvoiceIcon, QrIcon, CrossIcon, CheckIcon, EyeIcon, UploadIcon, ShieldCheckIcon } from "../components/icons";
+import { HOME } from "../lib/wallet";
+
+// How a rupee moves — the four-step promise, in the order it happens.
+const HOW = [
+  { n: "01", title: "Donate with a purpose", text: "Your gift becomes a tagged lot: Water, Medical or Education, with a deadline." },
+  { n: "02", title: "Locked in escrow", text: "A smart contract holds it. No person — not the NGO, not us — can move it." },
+  { n: "03", title: "Signed invoice → 70%", text: "A staked vendor signs the bill. After a public challenge window, 70% is released." },
+  { n: "04", title: "Beneficiaries' cards → 30%", text: "People confirm delivery with QR cards. Only then is the last 30% paid." },
+];
+
+const ROLES = [
+  { kind: "Donor", icon: <VaultIcon />, title: "Donor", text: "Give for a purpose, follow every rupee, vote on disputes, get unspent money back." },
+  { kind: "NGO", icon: <InvoiceIcon />, title: "NGO", text: "Receive locked donations and pay vendors — only against signed invoices and proof." },
+  { kind: "Vendor", icon: <UploadIcon />, title: "Vendor / fiat agent", text: "Sign invoices and get paid from escrow — or pay village shops in rupees and prove it." },
+  { kind: "Field", icon: <QrIcon />, title: "Field partner", text: "Issue beneficiaries' QR cards and confirm each handover — no names on-chain." },
+  { kind: "Watcher", icon: <EyeIcon />, title: "Watcher", text: "Audit any payout, challenge fraud, and earn the cheater's bond." },
+];
 
 const ROOT_DETAILS = [
   { icon: <VaultIcon />, title: "Tagged lot", text: "Every donation becomes a lot that remembers its donor, purpose and deadline — even across chains." },
@@ -21,7 +38,7 @@ const ROOT_DETAILS = [
 ];
 
 export default function Explore() {
-  const { state, events, config } = useApp("state", "events", "config");
+  const { state, events, config, user } = useApp("state", "events", "config", "user");
   const s = state.stats;
   const label = useMemo(() => labeler(config), [config]);
   // one unit for the whole money row, so "₹3.0 L" never sits next to "₹40,000"
@@ -35,10 +52,14 @@ export default function Explore() {
 
   return (
     <motion.div variants={stagger()} initial="hidden" animate="show">
-      <motion.section variants={fadeUp} className="flex flex-wrap items-end justify-between gap-10 pt-10 pb-8">
+      <motion.div variants={fadeUp}>
+        <Hero user={user} />
+      </motion.div>
+
+      <motion.section variants={fadeUp} className="flex flex-wrap items-end justify-between gap-10 border-t border-hairline pt-10 pb-8">
         <div className="max-w-[520px]">
-          <span className="text-[13px] text-graphite">Every rupee, provable</span>
-          <h1 className="font-display text-[64px] leading-[0.95] font-normal tracking-tight">Fund flow</h1>
+          <span className="text-[13px] text-graphite">Live from the chain</span>
+          <h2 className="font-display text-[48px] leading-[0.95] font-normal tracking-tight">Fund flow</h2>
           <p className="mt-4 text-[15px] text-ash">
             Money moves only when proof moves. Each rupee below is held by a contract, released against a vendor-signed invoice, and finished only when beneficiaries prove delivery.
           </p>
@@ -110,6 +131,79 @@ export default function Explore() {
         </Section>
       </motion.div>
     </motion.div>
+  );
+}
+
+/// First screen for a first-time visitor (or judge): what this is, how money moves, and where you fit.
+function Hero({ user }) {
+  return (
+    <section data-tour="landing-hero" className="pt-10 pb-10">
+      <div className="flex flex-wrap items-end justify-between gap-8">
+        <div className="max-w-[760px]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-signal px-3 py-1 text-[13px] font-medium text-obsidian">
+            <ShieldCheckIcon size={14} /> Verifiable NGO fund flows
+          </span>
+          <h1 className="mt-4 font-display text-[56px] leading-[1.02] font-normal tracking-tight">Every rupee, provable.</h1>
+          <p className="mt-4 text-[17px] leading-relaxed text-ash">
+            Donated money sits in a smart contract and moves only when proof moves — a vendor-signed invoice, then beneficiaries confirming delivery. Fraud is caught
+            and the escrow frozen by code, not by an auditor.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          {user ? (
+            <Link to={HOME[user.kind]}>
+              <Button variant="signal">Go to my workspace</Button>
+            </Link>
+          ) : (
+            <>
+              <Link to="/signup">
+                <Button variant="signal">Create an account</Button>
+              </Link>
+              <Link to="/login">
+                <Button variant="ghost">Sign in</Button>
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+
+      <ol data-tour="landing-how" className="mt-8 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {HOW.map((h, i) => (
+          <li key={h.n} className={`relative rounded-[var(--radius-tile)] border p-5 ${i === 3 ? "border-signal-deep bg-signal-mist" : "border-hairline bg-paper"}`}>
+            <div className="font-mono text-[13px] text-graphite">{h.n}</div>
+            <div className="mt-1 text-[16px] font-medium">{h.title}</div>
+            <p className="mt-1 text-[14px] leading-snug text-ash">{h.text}</p>
+          </li>
+        ))}
+      </ol>
+
+      <div data-tour="landing-roles" className="mt-8">
+        <div className="mb-3 text-[13px] font-medium text-ash">{user ? "Everyone on GlassVault" : "Choose how you take part"}</div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {ROLES.map((r) => {
+            const mine = user?.kind === r.kind;
+            const to = user ? (mine ? HOME[r.kind] : null) : "/signup";
+            const body = (
+              <div className={`flex h-full flex-col rounded-[var(--radius-tile)] border p-5 transition-colors ${mine ? "border-obsidian bg-white" : "border-hairline bg-paper"} ${to ? "hover:border-ash/40" : ""}`}>
+                <div className="flex items-center gap-3">
+                  <IconOrb size={36}>{r.icon}</IconOrb>
+                  <span className="text-[16px] font-medium">{r.title}</span>
+                </div>
+                <p className="mt-3 flex-1 text-[14px] leading-snug text-ash">{r.text}</p>
+                <span className="mt-4 text-[14px] font-medium">{user ? (mine ? "Your workspace →" : "Another role") : `Join as ${r.title.startsWith("NGO") ? "NGO" : r.title.split(" /")[0].toLowerCase()} →`}</span>
+              </div>
+            );
+            return to ? (
+              <Link key={r.kind} to={to} state={user ? undefined : { kind: r.kind }} className="block">
+                {body}
+              </Link>
+            ) : (
+              <div key={r.kind}>{body}</div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 

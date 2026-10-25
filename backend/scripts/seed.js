@@ -5,39 +5,23 @@ import { ethers } from "ethers";
 import { setup, api, uploadFile, renderReceipt, signInvoice, advance, sleep, inr, CAT, issueBatch, confirmWithCard } from "./lib.js";
 import { roleKey } from "../src/config.js";
 import { createAccount, userByUsername } from "../src/accounts.js";
+import { DEMO_ACCOUNTS } from "./demo-accounts.js";
 
-// Logins for the seeded history. LOCAL-CHAIN SEED DATA ONLY: the dev keys are public (Hardhat
-// mnemonic) and so is this password — never reuse either on a real network.
-const SEED_PASSWORD = "glassvault-local";
-const SEED_ACCOUNTS = [
-  ["priya", "donorPriya", "Donor", "Priya"],
-  ["rahul", "donorRahul", "Donor", "Rahul"],
-  ["tatacsr", "donorCSR", "Donor", "Tata CSR"],
-  ["asha", "ngoAsha", "NGO", "Asha Foundation"],
-  ["shadow", "ngoShadow", "NGO", "Shadow Trust"],
-  ["bluewell", "vendorWater", "Vendor", "BlueWell Pumps"],
-  ["medicare", "vendorMedical", "Vendor", "MediCare Supplies"],
-  ["vidya", "vendorEducation", "Vendor", "Vidya Books"],
-  ["quickfix", "vendorShell", "Vendor", "QuickFix Traders"],
-  ["field", "fieldWorker", "Field", "Sahyog Field Partners"],
-  ["watcher", "watcher", "Watcher", "Watcher"],
-  ["paylink", "offrampAgent", "Vendor", "PayLink Fiat Agents"],
-];
+// Logins for the seeded history: one per role, each with its own password (backend/scripts/demo-accounts.js).
 
 /// Idempotent: existing usernames are skipped. Keystores use the same scrypt cost as the browser.
 async function seedAccounts() {
   console.log("\nlogins for the seeded roles (local chain only):");
-  for (const [username, role, kind, displayName] of SEED_ACCOUNTS) {
+  for (const [username, role, kind, displayName, password] of DEMO_ACCOUNTS) {
     const wallet = new ethers.Wallet(roleKey(role));
     let note = "exists";
     if (!userByUsername(username)) {
-      const keystore = await ethers.encryptKeystoreJson({ address: wallet.address, privateKey: wallet.privateKey }, SEED_PASSWORD, { scrypt: { N: 2 ** 15 } });
-      const out = await createAccount({ username, password: SEED_PASSWORD, kind, displayName, address: wallet.address, keystore });
+      const keystore = await ethers.encryptKeystoreJson({ address: wallet.address, privateKey: wallet.privateKey }, password, { scrypt: { N: 2 ** 15 } });
+      const out = await createAccount({ username, password, kind, displayName, address: wallet.address, keystore });
       note = out.error ? `skipped: ${out.error}` : "created";
     }
-    console.log(`   ${username.padEnd(10)} ${kind.padEnd(8)} ${displayName.padEnd(18)} ${wallet.address}  ${note}`);
+    console.log(`   ${username.padEnd(10)} ${password.padEnd(18)} ${kind.padEnd(8)} ${displayName.padEnd(22)} ${note}`);
   }
-  console.log(`   password for all: ${SEED_PASSWORD}`);
 }
 
 const ctx = setup();
@@ -68,7 +52,7 @@ console.log("2. NGOs post bonds, vendors post stakes");
 await wait(vaultAs("ngoAsha").registerNGO("Asha Foundation"));
 await wait(vaultAs("ngoShadow").registerNGO("Shadow Trust"));
 await wait(vaultAs("vendorWater").registerVendor(CAT.Water, ethers.id("GSTIN 27AABCB1234F1Z5 · BlueWell Pumps")));
-await wait(vaultAs("vendorMedical").registerVendor(CAT.Medical, ethers.id("GSTIN 07AACCM5678K1Z2 · MediCare Supplies")));
+await wait(vaultAs("vendorMedical").registerVendor(CAT.Medical, ethers.id("GSTIN 07AACCM5678K1Z2 · Medilink Supplies")));
 await wait(vaultAs("vendorEducation").registerVendor(CAT.Education, ethers.id("GSTIN 29AADCV9012L1Z8 · Vidya Books")));
 await wait(vaultAs("offrampAgent").registerOffRamp(CAT.Water, ethers.id("RBI PA licence · PayLink Fiat Agents")));
 log("PayLink Fiat Agents registered as a fiat off-ramp (Water)");
@@ -87,7 +71,7 @@ const donations = [
 ];
 for (const [role, ngo, cat, amt] of donations) {
   const vault = vaultAs(role);
-  // dead-man switch: Tata CSR's gift to Shadow Trust names Asha as fallback — if Shadow is frozen or
+  // dead-man switch: Navkiran CSR Fund's gift to Shadow Trust names Asha as fallback — if Shadow is frozen or
   // misses the deadline, anyone can redirect the unspent part to Asha instead of it sitting idle
   if (role === "donorCSR" && ngo === 1 && vault.interface.getFunction("donateWithFallback")) {
     await wait(vault.donateWithFallback(ngo, cat, inr(amt), await inDays(30), 0));
@@ -185,7 +169,7 @@ log("hop 6 · 2/2 beneficiaries confirmed · fiat + delivery proven → final 30
 
 console.log("6. a second payout left OPEN for the live demo (Medical, window running)");
 const items2 = [{ qty: 200, name: "Insulin vial 10ml", price: 250 }];
-const png2 = await renderReceipt({ seed: "seed-mc-311", vendorName: "MediCare Supplies", invoiceNo: "MC-311", date, items: items2, total: 50_000 });
+const png2 = await renderReceipt({ seed: "seed-mc-311", vendorName: "Medilink Supplies", invoiceNo: "MC-311", date, items: items2, total: 50_000 });
 const file2 = await uploadFile(png2, "MC-311.png");
 const f2 = { vendor: address("vendorMedical"), ngoId: 0, invoiceNo: "MC-311", amount: 50_000, date, category: CAT.Medical, fileHash: file2.fileHash };
 const s2 = await signInvoice(ctx, "vendorMedical", f2);

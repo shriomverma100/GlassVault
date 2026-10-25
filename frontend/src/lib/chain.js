@@ -5,17 +5,17 @@ export const CATEGORIES = ["Water", "Medical", "Education"];
 export const CAT = { Water: 0, Medical: 1, Education: 2 };
 
 export const ROLE_META = {
-  donorPriya: { label: "Priya", kind: "Donor" },
-  donorRahul: { label: "Rahul", kind: "Donor" },
-  donorCSR: { label: "Tata CSR", kind: "Donor" },
+  donorPriya: { label: "Priya Nair", kind: "Donor" },
+  donorRahul: { label: "Rahul Mehta", kind: "Donor" },
+  donorCSR: { label: "Navkiran CSR Fund", kind: "Donor" },
   ngoAsha: { label: "Asha Foundation", kind: "NGO" },
   ngoShadow: { label: "Shadow Trust", kind: "NGO" },
   vendorWater: { label: "BlueWell Pumps", kind: "Vendor" },
-  vendorMedical: { label: "MediCare Supplies", kind: "Vendor" },
+  vendorMedical: { label: "Medilink Supplies", kind: "Vendor" },
   vendorEducation: { label: "Vidya Books", kind: "Vendor" },
   vendorShell: { label: "QuickFix Traders", kind: "Vendor" },
   fieldWorker: { label: "Field worker", kind: "Field" },
-  watcher: { label: "Watcher", kind: "Watcher" },
+  watcher: { label: "OpenLedger Watch", kind: "Watcher" },
 };
 
 export const toWei = (n) => ethers.parseUnits(String(n), 18);
