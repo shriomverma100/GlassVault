@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { api, ipfsUrl } from "../../lib/api";
 import { useApp } from "../../lib/store";
-import { CATEGORIES, toWei } from "../../lib/chain";
+import { CATEGORIES, fromWei, toWei } from "../../lib/chain";
 import { liquid } from "../../lib/motion";
-import { Button, Card, Drawer, Field, HashText, Input, Rupees, Segmented } from "../ui/kit";
+import { Button, Card, Drawer, Field, HashText, Input, Rupees } from "../ui/kit";
 import { CategoryIcon } from "../icons";
 import { CheckRow, FRAUD_REASONS, QrCards, humanize, sameAddr, useApiList, useReceiptCid } from "./shared";
 
@@ -37,7 +37,16 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
 
   const [batches, reloadBatches] = useApiList(`/api/beneficiaries?ngoId=${ngo.id}`);
   const [root, setRoot] = useState(null);
+  const [rootCount, setRootCount] = useState(0); // cards in the chosen batch — the most deliveries it can ever prove
   const [required, setRequired] = useState(1);
+  const pickBatch = (r, count) => {
+    setRoot(r);
+    setRootCount(count);
+    setRequired(count);
+  };
+  // one batch proves one payout: the contract rejects a beneficiary root that already backs a payout
+  const usedRoots = useMemo(() => new Map(state.payouts.map((p) => [p.beneficiaryRoot.toLowerCase(), p.id])), [state.payouts]);
+  const rootUsedBy = root ? usedRoots.get(root.toLowerCase()) : undefined;
   const [newCount, setNewCount] = useState("5");
   const [newLabel, setNewLabel] = useState("");
   const [cards, setCards] = useState(null);
@@ -68,7 +77,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
     return lot && lot.ngoId === ngo.id && lot.category === category && Number(s.amount) <= lot.remaining;
   });
   const budgetOk = shares.length > 0 && Math.abs(sum - Number(amount)) < 1e-9 && withinBudget;
-  const impactOk = !!root && required > 0;
+  const impactOk = !!root && rootUsedBy === undefined && required > 0 && required <= rootCount;
   const allOk = sigOk && vendorOk && nullifierUsed === false && budgetOk && impactOk;
 
   async function createBatch() {
@@ -76,15 +85,29 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
     if (!(count > 0)) return;
     const out = await api.post("/api/beneficiaries", { count, label: newLabel || `${invoice.invoiceNo} recipients`, ngoId: ngo.id });
     setCards({ label: newLabel || `${invoice.invoiceNo} recipients`, cards: out.cards });
-    setRoot(out.root);
-    setRequired(out.count);
+    pickBatch(out.root, out.count);
     reloadBatches();
+  }
+
+  /// The indexer view can lag a block behind. Re-read every charged lot from the chain; if a share
+  /// that fitted the shown balance no longer fits, re-allocate instead of sending a stale request.
+  async function sharesStillFit() {
+    const charged = shares.filter((s) => Number(s.amount) > 0);
+    const fresh = await Promise.all(charged.map((s) => c.vault.lot(s.lotId).then((l) => fromWei(l.remaining))));
+    const stale = charged.some((s, i) => Number(s.amount) <= (state.lots[s.lotId]?.remaining ?? 0) && Number(s.amount) > fresh[i]);
+    if (!stale) return true;
+    const freshById = new Map(charged.map((s, i) => [s.lotId, fresh[i]]));
+    setShares(allocate(openLots.map((l) => ({ ...l, remaining: freshById.get(l.id) ?? l.remaining })), amount));
+    toast({ title: "Donor lots changed", body: "Another payout reserved part of these lots. Shares were re-allocated from the live balances — review and submit again.", tone: "error", ms: 8000 });
+    return false;
   }
 
   async function submit() {
     if (!root) return toast({ title: "Impact proof required", body: "Attach a beneficiary batch first — root ④ is mandatory.", tone: "error" });
+    if (rootUsedBy !== undefined) return toast({ title: "Batch already used", body: `These cards already prove payout #${rootUsedBy}. Issue a fresh batch for this invoice.`, tone: "error" });
     setBusy(true);
     try {
+      if (!(await sharesStillFit())) return;
       const rc = await tx(`Request payout · ${invoice.invoiceNo}`, () =>
         c.vault.requestPayout(
           chain.typedInvoice(fields),
@@ -96,8 +119,16 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
       );
       const parsed = rc.logs.map((l) => { try { return c.vault.interface.parseLog(l); } catch { return null; } }).filter(Boolean);
       const flag = parsed.find((p) => p.name === "FraudFlagged");
+      const discrepancy = parsed.find((p) => p.name === "Discrepancy");
+      const slashed = parsed.find((p) => p.name === "VendorSlashed");
       const req = parsed.find((p) => p.name === "PayoutRequested");
-      if (flag) {
+      if (slashed) {
+        toast({ title: "Vendor slashed", body: "The vendor signed these exact invoice fields for another NGO. Its stake was slashed; this NGO is not flagged.", tone: "error", ms: 9000 });
+        await api.post(`/api/invoices/${invoice.id}/status`, { status: "flagged", txHash: rc.hash });
+      } else if (discrepancy) {
+        const reason = humanize(FRAUD_REASONS[Number(discrepancy.args.reason)]);
+        toast({ title: `Payout rejected: ${reason}`, body: "Recorded on-chain as a discrepancy. It does not count toward a freeze — fix the shares and try again.", tone: "error", ms: 9000 });
+      } else if (flag) {
         const reason = humanize(FRAUD_REASONS[Number(flag.args.reason)]);
         const frozen = parsed.some((p) => p.name === "NGOFrozen");
         toast({ title: `Fraud recorded: ${reason}`, body: frozen ? "Second flag — the contract froze this NGO." : `Flag ${flag.args.flagCount} of 2 before automatic freeze.`, tone: "error", ms: 9000 });
@@ -184,22 +215,28 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
           <div className="text-[14px] font-medium">Impact proof — beneficiary batch</div>
           <div className="mt-1 text-[12px] text-graphite">Only the Merkle root of card commitments goes on-chain. The last 30% is released after this many QR confirmations.</div>
           <div className="mt-4 flex flex-col gap-2">
-            {batches.map((b) => (
-              <button
-                key={b.root}
-                onClick={() => {
-                  setRoot(b.root);
-                  setRequired(b.count);
-                }}
-                className={`flex items-center justify-between rounded-full border px-4 py-2 text-left text-[13px] ${root === b.root ? "border-obsidian bg-signal-mist" : "border-hairline bg-white"}`}
-              >
-                <span>{b.label || "Batch"}</span>
-                <span className="text-graphite">
-                  {b.count} cards · <span className="font-mono">{b.root.slice(0, 8)}…</span>
-                </span>
-              </button>
-            ))}
+            {batches.map((b) => {
+              const usedBy = usedRoots.get(b.root.toLowerCase());
+              return (
+                <button
+                  key={b.root}
+                  disabled={usedBy !== undefined}
+                  onClick={() => pickBatch(b.root, b.count)}
+                  className={`flex items-center justify-between rounded-full border px-4 py-2 text-left text-[13px] disabled:cursor-not-allowed ${
+                    usedBy !== undefined ? "border-dashed border-hairline bg-paper text-ash" : root === b.root ? "border-obsidian bg-signal-mist" : "border-hairline bg-white"
+                  }`}
+                >
+                  <span>{b.label || "Batch"}</span>
+                  <span className="text-ash">
+                    {usedBy !== undefined ? `used by payout #${usedBy}` : `${b.count} cards`} · <span className="font-mono">{b.root.slice(0, 8)}…</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
+          {batches.length > 0 && batches.every((b) => usedRoots.has(b.root.toLowerCase())) && (
+            <div className="mt-2 text-[12px] text-ash">Every batch already proves another payout. Issue a fresh batch for this invoice.</div>
+          )}
           <div className="mt-4 flex items-end gap-2 border-t border-hairline pt-4">
             <Field label="New batch label">
               <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Wadgaon households" />
@@ -213,8 +250,15 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
           </div>
           {root && (
             <div className="mt-4 flex items-center gap-3">
-              <Field label="Deliveries required">
-                <Input type="number" min="1" className="w-24" value={required} onChange={(e) => setRequired(Number(e.target.value))} />
+              <Field label="Deliveries required" hint={`1–${rootCount}: a batch can't prove more deliveries than it has cards`}>
+                <Input
+                  type="number"
+                  min="1"
+                  max={rootCount}
+                  className="w-24"
+                  value={required}
+                  onChange={(e) => setRequired(Math.min(rootCount, Math.max(1, Math.floor(Number(e.target.value) || 1))))}
+                />
               </Field>
               <div className="text-[12px] text-graphite">
                 root <HashText value={root} />
@@ -233,12 +277,17 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
           <CheckRow ok={vendorOk} label="Registered vendor, right category" detail={vendor ? `${vendor.category} · stake ₹${vendor.stake.toLocaleString("en-IN")}` : "Vendor not registered"} />
           <CheckRow ok={nullifierUsed === false} pending={nullifierUsed === null} label="Invoice never used before" detail={nullifierUsed ? "Nullifier already on-chain — duplicate" : "Global nullifier check across all NGOs"} />
           <CheckRow ok={budgetOk} label="Within donor budgets" detail={budgetOk ? "Shares add up and stay inside each lot" : "Shares must equal the amount and fit each lot"} />
-          <CheckRow ok={impactOk} label="Impact proof attached" detail={impactOk ? `${required} beneficiary confirmations required` : "Pick or issue a beneficiary batch"} />
+          <CheckRow
+            ok={impactOk}
+            label="Impact proof attached"
+            detail={impactOk ? `${required} beneficiary confirmations required` : rootUsedBy !== undefined ? `Batch already proves payout #${rootUsedBy} — issue a fresh one` : "Pick or issue a beneficiary batch"}
+          />
         </div>
         <div className="mt-auto pt-5">
           {!allOk && (
             <div className="hatch mb-3 rounded-[var(--radius-tile)] border border-obsidian bg-white p-3 text-[12px]">
-              Failing checks are not blocked — they are <b>recorded on-chain as fraud</b>. Two flags freeze this NGO automatically.
+              Failing checks are not blocked. A bad signature, a reused invoice or a wrong vendor is <b>recorded on-chain as fraud</b> — two flags freeze this NGO
+              automatically. Budget mismatches are rejected as discrepancies.
             </div>
           )}
           <Button variant={allOk ? "signal" : "danger"} className="w-full" disabled={busy || ngo.frozen} onClick={submit}>

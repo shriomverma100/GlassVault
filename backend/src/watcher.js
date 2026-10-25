@@ -20,16 +20,26 @@ export class Watcher {
   }
 
   start() {
-    this.indexer.on("event", (ev) => {
+    const handle = (ev) => {
       if (ev.name !== "PayoutRequested" || this.seen.has(ev.id)) return;
       this.seen.add(ev.id);
       // serialize so nonces never collide
       this.queue = this.queue.then(() => this.inspect(ev)).catch((e) => console.error("[watcher]", e.shortMessage || e.message));
-    });
+    };
+    // follow live first, then catch up on payouts requested while the bot was offline whose
+    // challenge window is still open (`seen` dedupes anything that arrives both ways)
+    this.indexer.on("event", handle);
+    this.wallet.provider
+      .getBlock("latest")
+      .then((b) => this.indexer.events.filter((ev) => ev.name === "PayoutRequested" && Number(ev.args.releaseAt) > b.timestamp).forEach(handle))
+      .catch((e) => console.error("[watcher] catch-up", e.shortMessage || e.message));
   }
 
   async inspect(ev) {
     const payoutId = Number(ev.args.payoutId);
+    // already challenged / released (e.g. by a citizen while we were offline) — nothing to add
+    const current = this.indexer.state?.payouts?.[payoutId];
+    if (current && current.status !== "Pending") return;
     const releaseAt = Number(ev.args.releaseAt);
     const now = (await this.wallet.provider.getBlock("latest")).timestamp; // chain clock, not wall clock
     const evidence = [];

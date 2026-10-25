@@ -4,7 +4,7 @@ import { db } from "./store.js";
 
 const CATEGORY = ["Water", "Medical", "Education"];
 const PAYOUT_STATUS = ["None", "Pending", "Released", "Completed", "Challenged", "Cancelled"];
-const FRAUD_REASON = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld"];
+const FRAUD_REASON = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign"];
 
 const fmt = (v) => Number(ethers.formatUnits(v, 18)); // dINR → rupees (demo amounts stay well inside float precision)
 
@@ -21,7 +21,11 @@ export class Indexer extends EventEmitter {
       { chain: depB.chainId, provider: providerB, contracts: [this.gatewayB], from: 0 },
     ];
     this.events = [];
-    this.flags = [];
+    this.eventIds = new Set(); // a poll that fails half-way re-reads logs it already ingested
+    this.flags = []; // fraud caught: NGO flags + vendor slashes
+    this.discrepancies = []; // rejected requests that do NOT count toward a freeze
+    this.challengeRewards = 0; // everything paid to challengers whose challenge was upheld
+    this.reclaimed = new Map(); // lotId → rupees a donor took back
     this.vendors = new Map();
     this.state = null;
     this.blockTimes = new Map();
@@ -71,8 +75,11 @@ export class Indexer extends EventEmitter {
       const v = parsed.args[i];
       args[input.name] = typeof v === "bigint" ? v.toString() : v;
     });
+    const id = `${src.chain}:${log.transactionHash}:${log.index}`;
+    if (this.eventIds.has(id)) return;
+    this.eventIds.add(id);
     const ev = {
-      id: `${src.chain}:${log.transactionHash}:${log.index}`,
+      id,
       chainId: src.chain,
       contract: log.address,
       name: parsed.name,
@@ -83,9 +90,18 @@ export class Indexer extends EventEmitter {
       time: await this.blockTime(src.provider, src.chain, log.blockNumber),
     };
     this.events.push(ev);
+    // decoded by name: an older deployment's ABI simply never yields the newer events
     if (parsed.name === "FraudFlagged") {
-      this.flags.push({ ...ev, ngoId: Number(args.ngoId), reason: FRAUD_REASON[Number(args.reason)], file: db.files[args.fileHash] ?? null });
+      this.flags.push({ ...ev, kind: "ngo", ngoId: Number(args.ngoId), reason: FRAUD_REASON[Number(args.reason)], file: db.files[args.fileHash] ?? null });
     }
+    if (parsed.name === "VendorSlashed") {
+      this.flags.push({ ...ev, kind: "vendor", ngoId: null, vendor: args.vendor, reason: "VendorDoubleSign", file: null });
+    }
+    if (parsed.name === "Discrepancy") {
+      this.discrepancies.push({ ...ev, ngoId: Number(args.ngoId), reason: FRAUD_REASON[Number(args.reason)], file: db.files[args.fileHash] ?? null });
+    }
+    if (parsed.name === "ChallengeResolved" && args.upheld) this.challengeRewards += fmt(args.reward);
+    if (parsed.name === "Reclaimed") this.reclaimed.set(Number(args.lotId), (this.reclaimed.get(Number(args.lotId)) ?? 0) + fmt(args.amount));
     if (parsed.name === "VendorRegistered") this.vendors.set(args.vendor, true);
     this.emit("event", ev);
   }
@@ -183,14 +199,17 @@ export class Indexer extends EventEmitter {
       paidOut: sum(payouts, (p) => p.paid),
       proofs: payouts.filter((p) => p.status !== "Cancelled").length + sum(payouts, (p) => p.deliveries),
       fraudsCaught: this.flags.length,
+      discrepancies: this.discrepancies.length,
+      paidToWatchers: this.challengeRewards,
       frozenNgos: ngos.filter((n) => n.frozen).length,
       verifiedPct: payouts.length ? Math.round((100 * payouts.filter((p) => p.status === "Completed").length) / payouts.length) : 0,
     };
 
-    this.state = { ngos, lots, payouts, vendors, flags: this.flags, stats, updatedAt: Date.now() };
+    this.state = { ngos, lots, payouts, vendors, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
   }
 
-  /// Sankey data: donor → NGO → category → vendor, link status = verified | pending | flagged | refunded.
+  /// Sankey data: donor → NGO → category → vendor, link status = verified | pending | flagged | frozen | refunded.
+  /// Conserves money per NGO: donated = paid or reserved for vendors + still in escrow + reclaimed by donors.
   flow() {
     const s = this.state;
     if (!s) return { nodes: [], links: [] };
@@ -204,13 +223,18 @@ export class Indexer extends EventEmitter {
       link(node(`donor:${l.donor}`, l.donor, "donor"), node(`ngo:${l.ngoId}`, ngo?.name ?? `NGO ${l.ngoId}`, "ngo"), l.amount, ngo?.frozen ? "frozen" : "verified");
     }
     for (const p of s.payouts) {
-      const status = { Completed: "verified", Released: "pending", Pending: "pending", Challenged: "flagged", Cancelled: "refunded" }[p.status];
+      // a Cancelled payout returned its unpaid part to the lots (drawn as escrow / refund below);
+      // only what it already paid the vendor left the NGO — before the freeze unwound it
+      const value = p.status === "Cancelled" ? p.paid : p.amount;
+      const status = p.status === "Cancelled" ? "frozen" : { Completed: "verified", Released: "pending", Pending: "pending", Challenged: "flagged" }[p.status];
       const cat = node(`cat:${p.ngoId}:${p.category}`, p.category, "category");
-      link(`ngo:${p.ngoId}`, cat, p.amount, status);
-      link(cat, node(`vendor:${p.vendor}`, p.vendor, "vendor"), p.amount, status);
+      link(`ngo:${p.ngoId}`, cat, value, status);
+      link(cat, node(`vendor:${p.vendor}`, p.vendor, "vendor"), value, status);
     }
     for (const l of s.lots) {
       if (l.remaining > 0) link(`ngo:${l.ngoId}`, node(`escrow:${l.ngoId}`, "In escrow", "escrow"), l.remaining, s.ngos[l.ngoId]?.frozen ? "frozen" : "pending");
+      const back = this.reclaimed.get(l.id) ?? 0;
+      if (back > 0) link(`ngo:${l.ngoId}`, node(`refund:${l.ngoId}`, "Refunded to donors", "refund"), back, "refunded");
     }
     return { nodes: [...nodes.values()], links };
   }

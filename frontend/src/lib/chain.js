@@ -32,13 +32,12 @@ export function makeChain(config) {
   const B = config.chainB;
 
   const signers = new Map();
-  /// One NonceManager per (role, chain) so rapid clicks never reuse a nonce.
+  /// Plain wallet per (role, chain): it asks the chain for the pending nonce on every send, so a
+  /// reverted estimate or the backend using the same key can never leave it stuck on a stale nonce.
+  /// Rapid clicks are serialized per role by `tx()` in the store.
   function devSigner(role, chain = "A") {
     const key = `${role}:${chain}`;
-    if (!signers.has(key)) {
-      const w = new ethers.Wallet(devKey(config.roles[role].index), chain === "A" ? providerA : providerB);
-      signers.set(key, new ethers.NonceManager(w));
-    }
+    if (!signers.has(key)) signers.set(key, new ethers.Wallet(devKey(config.roles[role].index), chain === "A" ? providerA : providerB));
     return signers.get(key);
   }
 

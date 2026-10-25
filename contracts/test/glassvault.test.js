@@ -1,9 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, ROOT } = require("./fixture");
+const { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, ROOT, freshRoot } = require("./fixture");
 
-const FR = { DuplicateInvoice: 0, ForgedSignature: 1, OutOfCategory: 2, OverBudget: 3, AmountMismatch: 4, UnregisteredVendor: 5 };
+const FR = { DuplicateInvoice: 0, ForgedSignature: 1, OutOfCategory: 2, OverBudget: 3, AmountMismatch: 4, UnregisteredVendor: 5, ChallengeUpheld: 6, VendorDoubleSign: 7 };
 const deadline = () => Math.floor(Date.now() / 1000) + 30 * 86400;
 
 async function donated() {
@@ -36,7 +36,7 @@ describe("GlassVault — ② escrow + ③ invoice proof (happy path)", () => {
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(40_000) });
     const shares = [{ lotId: 0, amount: inr(25_000) }, { lotId: 1, amount: inr(15_000) }];
 
-    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, shares, ROOT, 1)).to.emit(vault, "PayoutRequested");
+    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, shares, freshRoot(), 1)).to.emit(vault, "PayoutRequested");
     expect((await vault.lot(0)).remaining).to.equal(inr(25_000));
     expect((await vault.lot(1)).remaining).to.equal(inr(15_000));
     const shareRows = await vault.payoutShares(0);
@@ -46,7 +46,7 @@ describe("GlassVault — ② escrow + ③ invoice proof (happy path)", () => {
   it("cannot release before the challenge window closes, then releases 70%", async () => {
     const { vault, dinr, vendor, ngoAdmin, stranger } = await donated();
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(10_000) });
-    await vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(10_000) }], ROOT, 1);
+    await vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(10_000) }], freshRoot(), 1);
 
     await expect(vault.connect(stranger).release(0)).to.be.revertedWithCustomError(vault, "WindowOpen");
     await time.increase(WINDOW);
@@ -58,7 +58,7 @@ describe("GlassVault — ② escrow + ③ invoice proof (happy path)", () => {
   it("only the NGO admin can request payouts", async () => {
     const { vault, vendor, stranger } = await donated();
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1) });
-    await expect(vault.connect(stranger).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], ROOT, 1))
+    await expect(vault.connect(stranger).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 1))
       .to.be.revertedWithCustomError(vault, "NotNGOAdmin");
   });
 });
@@ -108,11 +108,11 @@ describe("GlassVault — adversarial: fraud is recorded and auto-freezes", () =>
   it("flags a re-scanned duplicate invoice (different file bytes, same fields)", async () => {
     const { vault, vendor, ngoAdmin } = await donated();
     const a = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(5_000), invoiceNo: "INV-77" });
-    await vault.connect(ngoAdmin).requestPayout(a.inv, a.sig, [{ lotId: 0, amount: inr(5_000) }], ROOT, 1);
+    await vault.connect(ngoAdmin).requestPayout(a.inv, a.sig, [{ lotId: 0, amount: inr(5_000) }], freshRoot(), 1);
 
     // same invoice re-scanned and charged to a different donor's lot
     const b = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(5_000), invoiceNo: "INV-77", fileHash: ethers.id("rescanned-bytes") });
-    await expect(vault.connect(ngoAdmin).requestPayout(b.inv, b.sig, [{ lotId: 1, amount: inr(5_000) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(b.inv, b.sig, [{ lotId: 1, amount: inr(5_000) }], freshRoot(), 1))
       .to.emit(vault, "FraudFlagged").withArgs(0, FR.DuplicateInvoice, anyBytes(), anyBytes(), 1);
     expect((await vault.lot(1)).remaining).to.equal(inr(30_000)); // no money moved
   });
@@ -120,66 +120,112 @@ describe("GlassVault — adversarial: fraud is recorded and auto-freezes", () =>
   it("flags a forged invoice (signed by someone other than the vendor)", async () => {
     const { vault, vendor, ngoAdmin } = await donated();
     const forged = await signInvoice(vault, ngoAdmin, { vendor: vendor.address, amount: inr(9_999) });
-    await expect(vault.connect(ngoAdmin).requestPayout(forged.inv, forged.sig, [{ lotId: 0, amount: inr(9_999) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(forged.inv, forged.sig, [{ lotId: 0, amount: inr(9_999) }], freshRoot(), 1))
       .to.emit(vault, "FraudFlagged").withArgs(0, FR.ForgedSignature, anyBytes(), anyBytes(), 1);
   });
 
   it("flags a malformed signature as forgery instead of reverting", async () => {
     const { vault, vendor, ngoAdmin } = await donated();
     const { inv } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1) });
-    await expect(vault.connect(ngoAdmin).requestPayout(inv, "0x1234", [{ lotId: 0, amount: inr(1) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(inv, "0x1234", [{ lotId: 0, amount: inr(1) }], freshRoot(), 1))
       .to.emit(vault, "FraudFlagged").withArgs(0, FR.ForgedSignature, anyBytes(), anyBytes(), 1);
   });
 
   it("flags spending a Medical lot on a Water vendor (out of category)", async () => {
     const { vault, vendor, ngoAdmin } = await donated();
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1_000) });
-    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 2, amount: inr(1_000) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 2, amount: inr(1_000) }], freshRoot(), 1))
       .to.emit(vault, "FraudFlagged").withArgs(0, FR.OutOfCategory, anyBytes(), anyBytes(), 1);
   });
 
-  it("flags charging more than a lot holds (over budget)", async () => {
+  it("records charging more than a lot holds as a discrepancy (over budget), not a fraud flag", async () => {
     const { vault, vendor, ngoAdmin } = await donated();
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(60_000) });
-    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(60_000) }], ROOT, 1))
-      .to.emit(vault, "FraudFlagged").withArgs(0, FR.OverBudget, anyBytes(), anyBytes(), 1);
+    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(60_000) }], freshRoot(), 1))
+      .to.emit(vault, "Discrepancy").withArgs(0, FR.OverBudget, anyBytes(), anyBytes())
+      .and.not.to.emit(vault, "FraudFlagged");
+    expect((await vault.lot(0)).remaining).to.equal(inr(50_000));
   });
 
-  it("flags lot shares that don't add up to the invoice (amount mismatch)", async () => {
+  it("records lot shares that don't add up to the invoice as a discrepancy (amount mismatch)", async () => {
     const { vault, vendor, ngoAdmin } = await donated();
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1_000) });
-    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(400) }], ROOT, 1))
-      .to.emit(vault, "FraudFlagged").withArgs(0, FR.AmountMismatch, anyBytes(), anyBytes(), 1);
+    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(400) }], freshRoot(), 1))
+      .to.emit(vault, "Discrepancy").withArgs(0, FR.AmountMismatch, anyBytes(), anyBytes());
+  });
+
+  it("an honest NGO working from stale balances is never frozen by discrepancies", async () => {
+    const { vault, vendor, ngoAdmin } = await donated();
+    for (const n of ["S-1", "S-2", "S-3"]) {
+      const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(60_000), invoiceNo: n });
+      await vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(60_000) }], freshRoot(), 1);
+    }
+    const org = await vault.ngo(0);
+    expect(org.flagCount).to.equal(0);
+    expect(org.frozen).to.equal(false);
   });
 
   it("flags invoices from unregistered vendors", async () => {
     const { vault, stranger, ngoAdmin } = await donated();
     const { inv, sig } = await signInvoice(vault, stranger, { vendor: stranger.address, amount: inr(1_000) });
-    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1_000) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1_000) }], freshRoot(), 1))
       .to.emit(vault, "FraudFlagged").withArgs(0, FR.UnregisteredVendor, anyBytes(), anyBytes(), 1);
   });
 
-  it("detects the same invoice reused by a DIFFERENT NGO (global nullifier)", async () => {
+  it("detects a DIFFERENT NGO copying another NGO's invoice (global nullifier)", async () => {
     const { vault, vendor, ngoAdmin, rogueNgo, donorA } = await donated();
     await vault.connect(donorA).donate(1, Category.Water, inr(20_000), deadline()); // lot 3 → rogue NGO
     const a = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(5_000), invoiceNo: "INV-SHARED" });
-    await vault.connect(ngoAdmin).requestPayout(a.inv, a.sig, [{ lotId: 0, amount: inr(5_000) }], ROOT, 1);
+    await vault.connect(ngoAdmin).requestPayout(a.inv, a.sig, [{ lotId: 0, amount: inr(5_000) }], freshRoot(), 1);
 
-    const b = await signInvoice(vault, vendor, { vendor: vendor.address, ngoId: 1, amount: inr(5_000), invoiceNo: "INV-SHARED" });
-    await expect(vault.connect(rogueNgo).requestPayout(b.inv, b.sig, [{ lotId: 3, amount: inr(5_000) }], ROOT, 1))
+    // rogue NGO re-addresses the copied invoice to itself; the vendor never signed that
+    const copy = { ...a.inv, ngoId: 1 };
+    await expect(vault.connect(rogueNgo).requestPayout(copy, a.sig, [{ lotId: 3, amount: inr(5_000) }], freshRoot(), 1))
       .to.emit(vault, "FraudFlagged").withArgs(1, FR.DuplicateInvoice, anyBytes(), anyBytes(), 1);
+  });
+
+  it("a vendor that signs the same invoice for two NGOs is slashed and banned — the NGO is not blamed", async () => {
+    const { vault, vendor, ngoAdmin, rogueNgo, donorA } = await donated();
+    await vault.connect(donorA).donate(1, Category.Water, inr(20_000), deadline()); // lot 3 → NGO 1
+    // vendor sells the same invoice to NGO 1 first, then to honest NGO 0
+    const b = await signInvoice(vault, vendor, { vendor: vendor.address, ngoId: 1, amount: inr(5_000), invoiceNo: "INV-SOLD-TWICE" });
+    await vault.connect(rogueNgo).requestPayout(b.inv, b.sig, [{ lotId: 3, amount: inr(5_000) }], freshRoot(), 1);
+    const a = await signInvoice(vault, vendor, { vendor: vendor.address, ngoId: 0, amount: inr(5_000), invoiceNo: "INV-SOLD-TWICE" });
+    const bondBefore = (await vault.ngo(0)).bond;
+    await expect(vault.connect(ngoAdmin).requestPayout(a.inv, a.sig, [{ lotId: 0, amount: inr(5_000) }], freshRoot(), 1))
+      .to.emit(vault, "VendorSlashed").withArgs(vendor.address, inr(5_000), anyBytes())
+      .and.not.to.emit(vault, "FraudFlagged");
+
+    const org = await vault.ngo(0);
+    expect(org.flagCount).to.equal(0);
+    expect(org.bond - bondBefore).to.equal(inr(5_000)); // slashed stake stays escrowed in the honest NGO's bond
+    const v = await vault.vendors(vendor.address);
+    expect(v.registered).to.equal(false);
+    expect(v.slashed).to.equal(true);
+    await expect(vault.connect(vendor).registerVendor(Category.Medical, ethers.id("new-name")))
+      .to.be.revertedWithCustomError(vault, "VendorBanned");
+  });
+
+  it("one beneficiary batch can back only one payout", async () => {
+    const { vault, vendor, ngoAdmin } = await donated();
+    const root = freshRoot();
+    const a = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1_000), invoiceNo: "B-1" });
+    await vault.connect(ngoAdmin).requestPayout(a.inv, a.sig, [{ lotId: 0, amount: inr(1_000) }], root, 1);
+    const b = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1_000), invoiceNo: "B-2" });
+    await expect(vault.connect(ngoAdmin).requestPayout(b.inv, b.sig, [{ lotId: 0, amount: inr(1_000) }], root, 1))
+      .to.be.revertedWithCustomError(vault, "RootAlreadyUsed");
   });
 
   it("auto-freezes the NGO after 2 flags — no admin involved — and blocks all fund movement", async () => {
     const { vault, vendor, ngoAdmin, donorA } = await donated();
     const good = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(5_000), invoiceNo: "INV-1" });
-    await vault.connect(ngoAdmin).requestPayout(good.inv, good.sig, [{ lotId: 0, amount: inr(5_000) }], ROOT, 1);
+    await vault.connect(ngoAdmin).requestPayout(good.inv, good.sig, [{ lotId: 0, amount: inr(5_000) }], freshRoot(), 1);
 
     const dup = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(5_000), invoiceNo: "INV-1", fileHash: ethers.id("x") });
-    await vault.connect(ngoAdmin).requestPayout(dup.inv, dup.sig, [{ lotId: 1, amount: inr(5_000) }], ROOT, 1);
+    await vault.connect(ngoAdmin).requestPayout(dup.inv, dup.sig, [{ lotId: 1, amount: inr(5_000) }], freshRoot(), 1);
 
     const forged = await signInvoice(vault, ngoAdmin, { vendor: vendor.address, amount: inr(8_000), invoiceNo: "INV-2" });
-    await expect(vault.connect(ngoAdmin).requestPayout(forged.inv, forged.sig, [{ lotId: 1, amount: inr(8_000) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(forged.inv, forged.sig, [{ lotId: 1, amount: inr(8_000) }], freshRoot(), 1))
       .to.emit(vault, "NGOFrozen").withArgs(0, 2);
 
     expect((await vault.ngo(0)).frozen).to.equal(true);
@@ -187,7 +233,7 @@ describe("GlassVault — adversarial: fraud is recorded and auto-freezes", () =>
     await expect(vault.release(0)).to.be.revertedWithCustomError(vault, "NGOIsFrozen");
     await expect(vault.connect(donorA).donate(0, Category.Water, inr(1), deadline())).to.be.revertedWithCustomError(vault, "NGOIsFrozen");
     const next = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1), invoiceNo: "INV-3" });
-    await expect(vault.connect(ngoAdmin).requestPayout(next.inv, next.sig, [{ lotId: 0, amount: inr(1) }], ROOT, 1))
+    await expect(vault.connect(ngoAdmin).requestPayout(next.inv, next.sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 1))
       .to.be.revertedWithCustomError(vault, "NGOIsFrozen");
   });
 });

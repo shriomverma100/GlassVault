@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { liquid, snappy } from "../../lib/motion";
 import { useApp, useTick } from "../../lib/store";
 import { short } from "../../lib/chain";
-import { CheckIcon, CrossIcon, HourglassIcon, SnowLockIcon } from "../icons";
+import { CheckIcon, CrossIcon, GavelIcon, HourglassIcon, SnowLockIcon } from "../icons";
 
 const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
@@ -117,7 +117,8 @@ const STATUS = {
   Completed: { label: "Impact verified", cls: "bg-signal text-obsidian", icon: <CheckIcon size={14} /> },
   Released: { label: "Awaiting impact", cls: "border border-signal-deep bg-white text-obsidian", icon: <HourglassIcon size={14} /> },
   Pending: { label: "Challenge window", cls: "border border-signal-deep bg-white text-obsidian", icon: <HourglassIcon size={14} /> },
-  Challenged: { label: "Under challenge", cls: "bg-obsidian text-white hatch", icon: <CrossIcon size={14} /> },
+  // disputed, not fraud: the donors' vote is still open — outline only, fraud keeps the black hatch
+  Challenged: { label: "Disputed · vote open", cls: "border border-dashed border-obsidian bg-white text-obsidian", icon: <GavelIcon size={14} /> },
   Cancelled: { label: "Cancelled · refunded", cls: "bg-charcoal text-white", icon: <CrossIcon size={14} /> },
   Frozen: { label: "Frozen", cls: "bg-obsidian text-white", icon: <SnowLockIcon size={14} /> },
   Fraud: { label: "Fraud", cls: "bg-obsidian text-white hatch", icon: <CrossIcon size={14} /> },

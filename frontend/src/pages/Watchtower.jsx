@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { ethers } from "ethers";
 import { useApp } from "../lib/store";
 import { KpiStat } from "../components/ui/primitives";
 import { compactInr } from "../components/ui/kit";
@@ -12,14 +11,10 @@ import RedTeam from "../components/watch/RedTeam";
 
 /// The theatre: every fraud attempt, every dispute, the watcher's evidence, and the red team.
 export default function Watchtower() {
-  const { state, events, config } = useApp();
-  const watcher = config.roles.watcher.address.toLowerCase();
+  const { state } = useApp();
   const underChallenge = state.payouts.filter((p) => p.status === "Challenged").length;
-  const watcherRewards = events
-    .filter((e) => e.name === "ChallengeResolved" && String(e.args.upheld) === "true")
-    .filter((e) => state.payouts[Number(e.args.payoutId)]?.challenge?.challenger?.toLowerCase() === watcher)
-    .reduce((s, e) => s + Number(ethers.formatUnits(e.args.reward, 18)), 0);
-  const [rv, ru] = compactInr(watcherRewards);
+  // indexed over the whole chain history (anyone who challenged and won is a watcher)
+  const [rv, ru] = compactInr(state.stats.paidToWatchers ?? 0);
 
   return (
     <motion.div variants={stagger()} initial="hidden" animate="show">

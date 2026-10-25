@@ -9,6 +9,7 @@ export const REASONS = {
   AmountMismatch: { title: "Amount mismatch", text: "Lot shares don't add up to the invoice" },
   UnregisteredVendor: { title: "Unregistered vendor", text: "No staked vendor behind this invoice" },
   ChallengeUpheld: { title: "Challenge upheld", text: "Donors upheld a watcher challenge" },
+  VendorDoubleSign: { title: "Vendor double-signed", text: "Same invoice signed for two NGOs — vendor stake slashed" },
 };
 
 export const ipfsHref = (uri) => (uri?.startsWith("ipfs://") ? `/ipfs/${uri.slice(7)}` : uri);

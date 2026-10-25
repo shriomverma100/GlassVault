@@ -41,7 +41,8 @@ export default function Reconciler() {
       const p = state.payouts[Number(r.payoutId)];
       if (!r.donor || !p || !r.amount) continue;
       if (!byDonor.has(r.donor)) byDonor.set(r.donor, []);
-      byDonor.get(r.donor).push({ fileHash: p.fileHash, amount: Number(r.amount) });
+      // payout id + nullifier are unique on-chain; a file hash can back several payouts
+      byDonor.get(r.donor).push({ payoutId: p.id, nullifier: p.nullifier, amount: Number(r.amount) });
     }
     const report = {
       ngoId: Number(ngoId),

@@ -56,15 +56,18 @@ async function signInvoice(vault, signer, fields) {
 }
 
 /// Beneficiary QR cards: random secrets -> commitments -> Merkle tree (only the root goes on-chain).
-function beneficiaryTree(n) {
-  const secrets = Array.from({ length: n }, (_, i) => ethers.id(`qr-card-secret-${i}`));
+function beneficiaryTree(n, batch = "") {
+  const secrets = Array.from({ length: n }, (_, i) => ethers.id(`qr-card-secret-${batch}${i}`));
   const commitments = secrets.map((s) => ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [s])));
   const tree = StandardMerkleTree.of(commitments.map((c) => [c]), ["bytes32"]);
   const proofFor = (i) => tree.getProof([commitments[i]]);
   return { tree, root: tree.root, secrets, proofFor };
 }
 
-// A real one-leaf beneficiary root for tests that only exercise the invoice side.
-const ROOT = beneficiaryTree(1).root;
+// A real one-leaf beneficiary root for tests that only exercise the invoice side. Each payout needs
+// its own batch (a root can back only one payout), so tests call freshRoot() per payout.
+let batches = 0;
+const freshRoot = () => beneficiaryTree(1, `batch-${batches++}-`).root;
+const ROOT = freshRoot();
 
-module.exports = { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, ROOT };
+module.exports = { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, ROOT, freshRoot };

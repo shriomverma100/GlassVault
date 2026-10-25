@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { makeChain, reason } from "./chain";
 
@@ -13,6 +13,7 @@ export function AppProvider({ children }) {
   const [events, setEvents] = useState([]);
   const [findings, setFindings] = useState([]);
   const [benchmark, setBenchmark] = useState(null);
+  const [relayer, setRelayer] = useState(null); // latest bridge relayer status: delivered | failed
   const [frozenAlert, setFrozenAlert] = useState(null);
   const [role, setRole] = useState(() => localStorage.getItem("gv-role") || "donorPriya");
   const [toasts, setToasts] = useState([]);
@@ -57,6 +58,7 @@ export function AppProvider({ children }) {
         }
         if (type === "watcher") setFindings((xs) => [payload, ...xs].slice(0, 200));
         if (type === "benchmark") setBenchmark(payload);
+        if (type === "relayer") setRelayer(payload);
       };
       ws.onclose = () => !stop && setTimeout(connect, 1000);
     };
@@ -77,12 +79,18 @@ export function AppProvider({ children }) {
   const signerB = chain ? chain.devSigner(role, "B") : null;
   const c = useMemo(() => (chain && signer ? chain.contracts(signer, signerB) : null), [chain, signer, signerB]);
 
+  // One send queue per role: a send starts only after the previous one reached the chain, so the
+  // wallet's pending-nonce lookup never hands the same nonce to two rapid clicks.
+  const sendQueues = useRef(new Map());
+
   /// Runs `fn` (returns a tx or a promise of a tx), waits for it, toasts the outcome.
   const tx = useCallback(
     async (label, fn) => {
       toast({ title: label, body: "Waiting for confirmation…", tone: "pending", ms: 2500 });
+      const sending = (sendQueues.current.get(role) ?? Promise.resolve()).then(() => fn());
+      sendQueues.current.set(role, sending.catch(() => {}));
       try {
-        const sent = await fn();
+        const sent = await sending;
         const rc = await sent.wait();
         toast({ title: label, body: `Confirmed in block ${rc.blockNumber}`, tone: "ok", hash: rc.hash });
         return rc;
@@ -91,7 +99,7 @@ export function AppProvider({ children }) {
         throw e;
       }
     },
-    [toast],
+    [toast, role],
   );
 
   const chainNow = () => Math.floor(Date.now() / 1000) + clockSkew;
@@ -104,6 +112,7 @@ export function AppProvider({ children }) {
     findings,
     benchmark,
     setBenchmark,
+    relayer,
     role,
     switchRole,
     address,

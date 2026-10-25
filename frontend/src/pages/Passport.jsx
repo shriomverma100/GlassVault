@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { ethers } from "ethers";
 import { useApp, useTick } from "../lib/store";
 import { api, ipfsUrl } from "../lib/api";
-import { labeler, lotPayouts, lotSpine, eventSentence, eventTone } from "../lib/derive";
+import { labeler, lotPayouts, lotSpent, lotSpine, eventSentence, eventTone } from "../lib/derive";
 import { fadeUp, liquid, stagger } from "../lib/motion";
 import { Section, Card, Button, Input, Segmented, StatusBadge, Rupees, HashText, Countdown, Empty, Drawer, KV } from "../components/ui/kit";
 import { IconOrb } from "../components/ui/primitives";
@@ -95,7 +95,7 @@ function MiniSpine({ statuses }) {
           {i > 0 && <span className={`h-px w-5 ${statuses[i - 1] === "done" && s === "done" ? "bg-signal-deep" : "bg-hairline"}`} />}
           <span
             className={`h-4 w-4 rounded-full ${
-              s === "done" ? "bg-signal" : s === "pending" ? "border-2 border-signal-deep bg-white" : s === "fraud" ? "hatch bg-obsidian" : s === "frozen" ? "bg-obsidian" : "border border-hairline bg-paper"
+              s === "done" ? "bg-signal" : s === "pending" ? "border-2 border-signal-deep bg-white" : s === "fraud" ? "hatch bg-obsidian" : s === "disputed" ? "border-2 border-dashed border-obsidian bg-white" : s === "frozen" ? "bg-obsidian" : "border border-hairline bg-paper"
             }`}
           />
         </span>
@@ -136,7 +136,7 @@ function LotDetail({ lotId }) {
   const now = chainNow();
   const spine = lotSpine(lot, ngo, payouts);
   const bridged = lot.sourceChain !== config.chainA.chainId;
-  const spent = payouts.filter((p) => p.status !== "Cancelled").reduce((a, p) => a + p.share, 0);
+  const spent = payouts.reduce((a, p) => a + lotSpent(p), 0);
   const canReclaim = isDonor && lot.remaining > 0 && (ngo.frozen || now > lot.deadline);
   const latest = (pred) => payouts.find(pred);
   const pending = latest((p) => p.status === "Pending");

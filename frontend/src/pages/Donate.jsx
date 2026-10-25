@@ -26,7 +26,7 @@ export default function Donate() {
 }
 
 function DonateForm() {
-  const { state, c, chain, address, tx, chainNow, config, toast } = useApp();
+  const { state, c, chain, address, tx, chainNow, config, toast, relayer } = useApp();
   const navigate = useNavigate();
   const [ngoId, setNgoId] = useState(() => state.ngos.find((n) => !n.frozen)?.id ?? 0);
   const [category, setCategory] = useState("Water");
@@ -35,7 +35,7 @@ function DonateForm() {
   const [source, setSource] = useState("A");
   const [balances, setBalances] = useState({ A: null, B: null });
   const [busy, setBusy] = useState(false);
-  const [relaying, setRelaying] = useState(null); // { since: lotCount }
+  const [relaying, setRelaying] = useState(null); // { since: lotCount, nonce: bridge nonce }
 
   const refresh = useCallback(async () => {
     if (!c || !address) return;
@@ -56,6 +56,13 @@ function DonateForm() {
       navigate(`/passport/${lot.id}`);
     }
   }, [state.lots, relaying, address, config, navigate, toast]);
+
+  // the relayer could not deliver it (e.g. the NGO froze in between): stop waiting, say why
+  useEffect(() => {
+    if (!relaying || relayer?.status !== "failed" || String(relayer.nonce) !== relaying.nonce) return;
+    setRelaying(null);
+    toast({ title: "Bridge delivery failed", body: `${relayer.error}. The money stays locked in the bridge on chain B and is retried when the relayer restarts.`, tone: "error", ms: 10000 });
+  }, [relayer, relaying, toast]);
 
   const ngo = state.ngos[ngoId];
   const amt = Number(amount);
@@ -79,8 +86,9 @@ function DonateForm() {
         const gw = chain.B.BridgeGateway.address;
         if ((await c.dinrB.allowance(address, gw)) < wei) await tx("Approve dINR on chain B", () => c.dinrB.approve(gw, wei));
         const since = state.lots.length;
-        await tx(`Send ₹${amt.toLocaleString("en-IN")} over the bridge`, () => c.gatewayB.sendDonation(ngoId, cat, wei, deadline, config.chainA.chainId));
-        setRelaying({ since });
+        const rc = await tx(`Send ₹${amt.toLocaleString("en-IN")} over the bridge`, () => c.gatewayB.sendDonation(ngoId, cat, wei, deadline, config.chainA.chainId));
+        const sent = rc.logs.map((l) => c.gatewayB.interface.parseLog(l)).find((p) => p?.name === "DonationSent");
+        setRelaying({ since, nonce: sent ? String(sent.args.nonce) : null });
       }
       refresh();
     } catch {

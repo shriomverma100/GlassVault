@@ -25,7 +25,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
 
     enum Category { Water, Medical, Education }
     enum PayoutStatus { None, Pending, Released, Completed, Challenged, Cancelled }
-    enum FraudReason { DuplicateInvoice, ForgedSignature, OutOfCategory, OverBudget, AmountMismatch, UnregisteredVendor, ChallengeUpheld }
+    /// @dev OverBudget and AmountMismatch are emitted as `Discrepancy` (recorded, not counted toward a
+    ///      freeze — stale balances cause them honestly). VendorDoubleSign slashes the vendor, not the NGO.
+    enum FraudReason { DuplicateInvoice, ForgedSignature, OutOfCategory, OverBudget, AmountMismatch, UnregisteredVendor, ChallengeUpheld, VendorDoubleSign }
 
     struct NGO {
         address admin;
@@ -43,6 +45,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
         Category category;
         bytes32 nameHash; // e.g. keccak(GSTIN) — no plaintext on-chain
         uint256 stake;
+        bool slashed;     // a slashed vendor can never register again (under any category)
     }
 
     /// @notice One donation = one tagged lot of money.
@@ -128,6 +131,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
     mapping(bytes32 => uint256) public nullifierToPayout; // payoutId + 1 (0 = unused)
     /// @notice Delivery nullifiers — one beneficiary can confirm a payout only once.
     mapping(bytes32 => bool) public deliveryUsed;
+    /// @notice A beneficiary batch proves delivery for exactly one payout, so the same cards can't
+    ///         "prove" every invoice.
+    mapping(bytes32 => bool) public rootUsed;
 
     // ─────────────────────────── events ──────────────────────────
 
@@ -142,6 +148,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
     event ImpactVerified(uint256 indexed payoutId, uint256 finalAmount);
     event FraudFlagged(uint256 indexed ngoId, FraudReason reason, bytes32 nullifier, bytes32 fileHash, uint32 flagCount);
     event NGOFrozen(uint256 indexed ngoId, uint32 flagCount);
+    event Discrepancy(uint256 indexed ngoId, FraudReason reason, bytes32 nullifier, bytes32 fileHash);
+    event VendorSlashed(address indexed vendor, uint256 amount, bytes32 nullifier);
     event Challenged(uint256 indexed payoutId, address indexed challenger, bytes32 evidenceHash, string evidenceURI, uint64 voteEnd);
     event Voted(uint256 indexed payoutId, address indexed donor, bool uphold, uint256 weight);
     event ChallengeResolved(uint256 indexed payoutId, bool upheld, uint256 reward);
@@ -167,6 +175,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
     error LotExpired();
     error ImpactProofRequired();
     error CategoryLocked();
+    error VendorBanned();
+    error RootAlreadyUsed();
 
     constructor(IERC20 token_, uint64 challengeWindow_, address bridgeGateway_) EIP712("GlassVault", "1") {
         token = token_;
@@ -189,6 +199,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
     ///         Category is fixed once registered, so a vendor can't re-categorise to frame an NGO.
     function registerVendor(Category category, bytes32 nameHash) external nonReentrant {
         Vendor storage v = vendors[msg.sender];
+        if (v.slashed) revert VendorBanned();
         if (v.registered && v.category != category) revert CategoryLocked();
         bool topUp = v.stake < VENDOR_STAKE;
         uint256 due = topUp ? VENDOR_STAKE - v.stake : 0;
@@ -266,9 +277,17 @@ contract GlassVault is EIP712, ReentrancyGuard {
         bytes32 nullifier = invoiceNullifier(inv);
 
         // ③ off-chain invoice proof checks — each failure is recorded as a fraud flag
-        if (nullifierToPayout[nullifier] != 0) return _flag(inv.ngoId, FraudReason.DuplicateInvoice, nullifier, inv.fileHash);
         (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(invoiceDigest(inv), vendorSig);
-        if (err != ECDSA.RecoverError.NoError || signer != inv.vendor) return _flag(inv.ngoId, FraudReason.ForgedSignature, nullifier, inv.fileHash);
+        bool vendorSigned = err == ECDSA.RecoverError.NoError && signer == inv.vendor;
+        uint256 prior = nullifierToPayout[nullifier];
+        if (prior != 0) {
+            // The vendor validly signed the same invoice for a second NGO: the vendor double-sold the
+            // evidence, so the vendor is slashed and the NGO is not blamed (stops vendors framing NGOs).
+            if (vendorSigned && _payouts[prior - 1].ngoId != inv.ngoId) return _slashVendor(inv.vendor, org, nullifier);
+            // Same NGO reusing it (double-counting across donors), or a copy with a doctored signature.
+            return _flag(inv.ngoId, FraudReason.DuplicateInvoice, nullifier, inv.fileHash);
+        }
+        if (!vendorSigned) return _flag(inv.ngoId, FraudReason.ForgedSignature, nullifier, inv.fileHash);
         Vendor memory v = vendors[inv.vendor];
         if (!v.registered) return _flag(inv.ngoId, FraudReason.UnregisteredVendor, nullifier, inv.fileHash);
         if (v.category != inv.category) return _flag(inv.ngoId, FraudReason.OutOfCategory, nullifier, inv.fileHash);
@@ -280,12 +299,14 @@ contract GlassVault is EIP712, ReentrancyGuard {
             // expired lots belong to the donor's reclaim right — revert, don't flag (prevents reclaim front-run griefing)
             if (block.timestamp > l.deadline) revert LotExpired();
             if (l.ngoId != inv.ngoId || l.category != inv.category) return _flag(inv.ngoId, FraudReason.OutOfCategory, nullifier, inv.fileHash);
-            if (shares[i].amount > l.remaining) return _flag(inv.ngoId, FraudReason.OverBudget, nullifier, inv.fileHash);
+            if (shares[i].amount > l.remaining) return _discrepancy(inv.ngoId, FraudReason.OverBudget, nullifier, inv.fileHash);
             total += shares[i].amount;
         }
-        if (total != inv.amount) return _flag(inv.ngoId, FraudReason.AmountMismatch, nullifier, inv.fileHash);
+        if (total != inv.amount) return _discrepancy(inv.ngoId, FraudReason.AmountMismatch, nullifier, inv.fileHash);
+        if (rootUsed[beneficiaryRoot]) revert RootAlreadyUsed();
 
         // all checks passed — reserve funds and open the challenge window
+        rootUsed[beneficiaryRoot] = true;
         payoutId = _payouts.length;
         uint64 releaseAt = uint64(block.timestamp) + challengeWindow;
         _payouts.push(Payout({
@@ -422,6 +443,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
             reward += v.stake;
             v.stake = 0;
             v.registered = false;
+            v.slashed = true;
 
             _flag(p.ngoId, FraudReason.ChallengeUpheld, p.nullifier, p.fileHash);
             emit ChallengeResolved(payoutId, true, reward);
@@ -496,6 +518,24 @@ contract GlassVault is EIP712, ReentrancyGuard {
             org.frozen = true;
             emit NGOFrozen(ngoId, org.flagCount);
         }
+        return type(uint256).max;
+    }
+
+    /// @dev Recorded on-chain for donors and the reconciler, but not counted toward a freeze.
+    function _discrepancy(uint256 ngoId, FraudReason reason, bytes32 nullifier, bytes32 fileHash) internal returns (uint256) {
+        emit Discrepancy(ngoId, reason, nullifier, fileHash);
+        return type(uint256).max;
+    }
+
+    /// @dev The slashed stake joins the honest NGO's bond: it stays escrowed and remains slashable.
+    function _slashVendor(address vendor, NGO storage org, bytes32 nullifier) internal returns (uint256) {
+        Vendor storage v = vendors[vendor];
+        uint256 amount = v.stake;
+        v.stake = 0;
+        v.registered = false;
+        v.slashed = true;
+        org.bond += amount;
+        emit VendorSlashed(vendor, amount, nullifier);
         return type(uint256).max;
     }
 

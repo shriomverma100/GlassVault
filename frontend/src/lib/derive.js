@@ -17,22 +17,32 @@ export function lotPayouts(state, lotId) {
     .map((p) => ({ ...p, share: p.shares.filter((s) => s.lotId === lotId).reduce((a, s) => a + s.amount, 0) }));
 }
 
-/// The 4 roots for one donation. Returns statuses: done | pending | fraud | frozen | idle.
+/// Money this lot really lost to a payout. A Cancelled payout returned only its unpaid part, so a
+/// payout unwound after its 70% release still spent that 70% of the lot's share.
+export const lotSpent = (p) => (p.status === "Cancelled" ? (p.share * p.paid) / p.amount : p.share);
+
+/// The 4 roots for one donation. Returns statuses: done | pending | disputed | fraud | frozen | idle.
+/// `disputed` = a challenge vote is still open (not fraud yet); `fraud` = a challenge was upheld.
 export function lotSpine(lot, ngo, payouts) {
   const inbound = "done";
   const escrow = ngo?.frozen ? "frozen" : "done";
+  const unwoundAfterPaying = (p) => p.status === "Cancelled" && p.paid > 0;
   let invoice = "idle";
-  if (payouts.some((p) => p.status === "Released" || p.status === "Completed")) invoice = "done";
+  if (payouts.some((p) => p.status === "Released" || p.status === "Completed" || unwoundAfterPaying(p))) invoice = "done";
   else if (payouts.some((p) => p.status === "Pending")) invoice = "pending";
-  if (payouts.some((p) => p.status === "Challenged" || (p.status === "Cancelled" && p.challenge?.upheld))) invoice = invoice === "done" ? "done" : "fraud";
+  if (invoice !== "done") {
+    if (payouts.some((p) => p.status === "Cancelled" && p.challenge?.upheld)) invoice = "fraud";
+    else if (payouts.some((p) => p.status === "Challenged")) invoice = "disputed";
+  }
   let impact = "idle";
   if (payouts.some((p) => p.status === "Completed")) impact = "done";
   else if (payouts.some((p) => (p.status === "Released" || p.status === "Pending") && p.deliveries < p.deliveriesRequired)) impact = "pending";
+  else if (payouts.some(unwoundAfterPaying)) impact = "frozen"; // vendor was paid, but delivery can no longer be proven
   return [inbound, escrow, invoice, impact];
 }
 
 const CAT = ["Water", "Medical", "Education"];
-const REASON = ["duplicate invoice", "forged signature", "out-of-category spend", "over-budget charge", "amount mismatch", "unregistered vendor", "challenge upheld"];
+const REASON = ["duplicate invoice", "forged signature", "out-of-category spend", "over-budget charge", "amount mismatch", "unregistered vendor", "challenge upheld", "vendor signed the same invoice for two NGOs"];
 
 /// One human sentence per chain event, for the live ticker and timelines.
 export function eventSentence(ev, label, state) {
@@ -61,6 +71,10 @@ export function eventSentence(ev, label, state) {
       return `${ngo(a.ngoId)} flagged: ${REASON[Number(a.reason)]}`;
     case "NGOFrozen":
       return `${ngo(a.ngoId)} auto-frozen by contract after ${a.flagCount} flags`;
+    case "Discrepancy":
+      return `${ngo(a.ngoId)} payout rejected: ${REASON[Number(a.reason)]} (not counted toward freeze)`;
+    case "VendorSlashed":
+      return `${label(a.vendor)} slashed ${rs(a.amount)}: signed the same invoice for two NGOs`;
     case "Challenged":
       return `${label(a.challenger)} challenged payout #${a.payoutId}`;
     case "Voted":
@@ -82,7 +96,7 @@ export function eventSentence(ev, label, state) {
 
 /// Events that are bad news render dark; good news yellow; the rest neutral.
 export function eventTone(name) {
-  if (["FraudFlagged", "NGOFrozen", "Challenged"].includes(name)) return "bad";
+  if (["FraudFlagged", "NGOFrozen", "VendorSlashed"].includes(name)) return "bad";
   if (["ImpactVerified", "PayoutReleased", "DeliveryConfirmed", "Donated", "CrossChainDonation"].includes(name)) return "good";
   return "neutral";
 }

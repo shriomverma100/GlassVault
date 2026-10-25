@@ -43,8 +43,12 @@ async function main() {
   const deadline = (await ethers.provider.getBlock("latest")).timestamp + 365 * 86400;
   await vault.connect(donor).donate(0, 0, inr(50_000_000), deadline); // lot 0
 
-  const leaf = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.id("card")]));
-  const root = StandardMerkleTree.of([[leaf]], ["bytes32"]).root;
+  // each payout needs its own beneficiary batch (a root can back only one payout)
+  let batch = 0;
+  const freshRoot = () => {
+    const leaf = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.id(`card-${batch++}`)]));
+    return StandardMerkleTree.of([[leaf]], ["bytes32"]).root;
+  };
 
   const { chainId } = await ethers.provider.getNetwork();
   const domain = { name: "GlassVault", version: "1", chainId, verifyingContract: await vault.getAddress() };
@@ -115,7 +119,7 @@ async function main() {
 
     const dh = await differenceHash(photo);
     const snap = item.kind === "genuine" ? null : await network.provider.send("evm_snapshot");
-    const rc = await (await vault.connect(ngo).requestPayout(inv, sig, [{ lotId: 0, amount: inv.amount }], root, 1)).wait();
+    const rc = await (await vault.connect(ngo).requestPayout(inv, sig, [{ lotId: 0, amount: inv.amount }], freshRoot(), 1)).wait();
     const flagged = rc.logs.some((l) => vault.interface.parseLog(l)?.name === "FraudFlagged");
     const flagEv = rc.logs.map((l) => vault.interface.parseLog(l)).find((p) => p?.name === "FraudFlagged");
     const nearDup = !flagged && acceptedHashes.some((h) => hamming(h, dh) <= NEAR_DUP);
@@ -131,9 +135,9 @@ async function main() {
   // ── live finale on the same chain: two frauds in a row freeze the NGO ──
   const g0 = genuine[0];
   const reuse = { vendor: vendor.address, ngoId: 0, invoiceNo: ethers.id(g0.no), amount: inr(g0.amount), date, category: 0, fileHash: ethers.id("rescan") };
-  await vault.connect(ngo).requestPayout(reuse, await vendor.signTypedData(domain, types, reuse), [{ lotId: 0, amount: reuse.amount }], root, 1);
+  await vault.connect(ngo).requestPayout(reuse, await vendor.signTypedData(domain, types, reuse), [{ lotId: 0, amount: reuse.amount }], freshRoot(), 1);
   const forged = { ...reuse, invoiceNo: ethers.id("FORGED-1"), amount: inr(99_999) };
-  await vault.connect(ngo).requestPayout(forged, await ngo.signTypedData(domain, types, forged), [{ lotId: 0, amount: forged.amount }], root, 1);
+  await vault.connect(ngo).requestPayout(forged, await ngo.signTypedData(domain, types, forged), [{ lotId: 0, amount: forged.amount }], freshRoot(), 1);
   const frozen = (await vault.ngo(0)).frozen;
 
   // ── metrics ──

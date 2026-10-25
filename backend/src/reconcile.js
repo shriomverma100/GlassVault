@@ -3,15 +3,18 @@
 /// report = {
 ///   ngoId,
 ///   categories: [{ category: "Water", spent: 500000 }],             // "we spent ₹5L on water"
-///   donorReports: [{ donor: "0x…", invoices: [{ fileHash | nullifier, amount }] }]  // per-donor impact reports
+///   donorReports: [{ donor: "0x…", invoices: [{ payoutId | nullifier | fileHash, amount }] }]  // per-donor impact reports
 /// }
 ///
 /// Finds: category over-claims, invoices that don't exist on-chain, and OVER-ATTRIBUTION —
 /// the same invoice told to several donors for more than it was actually charged to each.
 export function reconcile(state, report) {
   const ngoId = Number(report.ngoId);
-  const payouts = state.payouts.filter((p) => p.ngoId === ngoId && p.status !== "Cancelled");
+  // every payout counts: a Cancelled one may still have paid its 70% before it was unwound
+  const payouts = state.payouts.filter((p) => p.ngoId === ngoId);
   const lots = state.lots;
+  // money a payout really moved: an unwound payout returned its unpaid part to the lots
+  const spentFrac = (p) => (p.status === "Cancelled" ? p.paid / p.amount : 1);
   const lines = [];
 
   for (const c of report.categories ?? []) {
@@ -31,13 +34,13 @@ export function reconcile(state, report) {
   const claimedPerInvoice = new Map();
   for (const r of report.donorReports ?? []) {
     for (const inv of r.invoices ?? []) {
-      const p = payouts.find((x) => x.fileHash === inv.fileHash || x.nullifier === inv.nullifier);
-      const key = p ? p.id : `missing:${inv.fileHash ?? inv.nullifier}`;
+      const p = findPayout(payouts, inv);
+      const key = p ? p.id : `missing:${inv.payoutId ?? inv.nullifier ?? inv.fileHash}`;
       if (!p) {
         lines.push({ kind: "invoice", label: `Invoice reported to ${short(r.donor)}`, claimed: Number(inv.amount), onChain: 0, status: "not-on-chain", detail: "No payout on-chain carries this invoice" });
         continue;
       }
-      const donorShare = p.shares.filter((s) => lots[s.lotId]?.donor?.toLowerCase() === r.donor.toLowerCase()).reduce((s, x) => s + x.amount, 0);
+      const donorShare = p.shares.filter((s) => lots[s.lotId]?.donor?.toLowerCase() === r.donor.toLowerCase()).reduce((s, x) => s + x.amount, 0) * spentFrac(p);
       if (Number(inv.amount) > donorShare + 0.5) {
         lines.push({
           kind: "attribution",
@@ -56,20 +59,30 @@ export function reconcile(state, report) {
   }
 
   for (const { payout, total, donors } of claimedPerInvoice.values()) {
-    if (total > payout.amount + 0.5) {
+    const real = payout.amount * spentFrac(payout);
+    if (total > real + 0.5) {
       lines.push({
         kind: "double-count",
         label: `Payout #${payout.id} counted in ${donors.length} donor reports`,
         claimed: total,
-        onChain: payout.amount,
+        onChain: real,
         status: "double-counted",
-        detail: `₹${payout.amount.toLocaleString("en-IN")} invoice reported as ₹${total.toLocaleString("en-IN")} of impact (${Math.round((100 * total) / payout.amount)}%)`,
+        detail: `₹${real.toLocaleString("en-IN")} of real spend reported as ₹${total.toLocaleString("en-IN")} of impact (${real ? Math.round((100 * total) / real) : "∞"}%)`,
       });
     }
   }
 
   const problems = lines.filter((l) => !["match", "under-claimed"].includes(l.status));
   return { ngoId, lines, problems: problems.length, verdict: problems.length ? "inconsistent" : "consistent" };
+}
+
+/// Exact match by payout id or nullifier (both unique on-chain). A file hash is only trusted when it
+/// points at exactly one payout — the same file can back several payouts.
+function findPayout(payouts, inv) {
+  if (inv.payoutId !== undefined && inv.payoutId !== null && inv.payoutId !== "") return payouts.find((x) => x.id === Number(inv.payoutId)) ?? null;
+  if (inv.nullifier) return payouts.find((x) => x.nullifier.toLowerCase() === String(inv.nullifier).toLowerCase()) ?? null;
+  const byFile = inv.fileHash ? payouts.filter((x) => x.fileHash === inv.fileHash) : [];
+  return byFile.length === 1 ? byFile[0] : null;
 }
 
 const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;

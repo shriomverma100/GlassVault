@@ -1,11 +1,11 @@
 import { motion } from "framer-motion";
 import { drift, liquid } from "../lib/motion";
-import { ShieldCheckIcon, CrossIcon, SnowLockIcon } from "./icons";
+import { ShieldCheckIcon, CrossIcon, GavelIcon, SnowLockIcon } from "./icons";
 
 /// The 4 evaluation roots as one horizontal spine. Every donation is drawn on it.
 export const ROOTS = ["Inbound donation", "Escrow condition", "Off-chain invoice proof", "Impact verification"];
 
-/// status: done | pending | fraud | frozen | idle
+/// status: done | pending | disputed | fraud | frozen | idle
 function Node({ status }) {
   const base = "relative grid h-14 w-14 place-items-center rounded-full";
   if (status === "done")
@@ -32,6 +32,12 @@ function Node({ status }) {
     return (
       <span className={`${base} hatch bg-obsidian text-white`}>
         <CrossIcon size={22} />
+      </span>
+    );
+  if (status === "disputed")
+    return (
+      <span className={`${base} border-2 border-dashed border-obsidian bg-white text-obsidian`}>
+        <GavelIcon size={22} />
       </span>
     );
   if (status === "frozen")
