@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+backend/data/
+shared/
+e2e/node_modules/
+e2e/shots/

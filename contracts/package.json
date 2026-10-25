@@ -1,0 +1,31 @@
+{
+  "name": "contracts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "chain:a": "hardhat node --port 8545",
+    "chain:b": "cross-env CHAIN_ID=31338 hardhat node --port 8546",
+    "deploy:a": "hardhat run scripts/deploy.js --network chainA",
+    "deploy:b": "hardhat run scripts/deploy.js --network chainB",
+    "deploy": "hardhat run scripts/deploy.js --network chainA && hardhat run scripts/deploy.js --network chainB"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/merkle-tree": "^1.0.8",
+    "cross-env": "^10.1.0",
+    "hardhat": "^2.29.1"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1"
+  }
+}

@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/* GlassVault design tokens — white · black · yellow only. */
+@theme {
+  /* yellow: the single accent — means "proven / active" */
+  --color-signal: #eef22b;
+  --color-signal-soft: #f6f7a1;
+  --color-signal-mist: #fbfcdd;
+  --color-signal-deep: #c9cc12;
+
+  /* whites */
+  --color-white: #ffffff;
+  --color-paper: #f4f3ef;
+  --color-bone: #e8e6e1;
+  --color-hairline: #d6d3cc;
+
+  /* blacks — black means "problem" (fraud / frozen) */
+  --color-graphite: #9a9893;
+  --color-ash: #5e5c58;
+  --color-charcoal: #2a2a28;
+  --color-obsidian: #121212;
+
+  --font-display: "Urbanist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --radius-card: 28px;
+  --radius-tile: 20px;
+  --radius-input: 16px;
+}
+
+@layer base {
+  html {
+    background: var(--color-bone);
+    color: var(--color-obsidian);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: var(--color-signal);
+    color: var(--color-obsidian);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-signal-deep);
+    outline-offset: 2px;
+  }
+  /* Lenis smooth scroll */
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+}
+
+@utility hairline {
+  border-color: var(--color-hairline);
+  border-width: 1px;
+}
+
+/* Diagonal hatch — used for fraud states and chart fills (from the reference). */
+@utility hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(18 18 18 / 0.18) 0 1px,
+    transparent 1px 7px
+  );
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,19 @@
+{
+  "name": "glassvault",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix contracts i && npm --prefix backend i && npm --prefix frontend i",
+    "chain:a": "npm --prefix contracts run chain:a",
+    "chain:b": "npm --prefix contracts run chain:b",
+    "test": "npm --prefix contracts test",
+    "deploy": "npm --prefix contracts run deploy && node -e \"require('fs').rmSync('backend/data',{recursive:true,force:true})\"",
+    "backend": "npm --prefix backend run dev",
+    "frontend": "npm --prefix frontend run dev",
+    "seed": "node backend/scripts/seed.js",
+    "attack": "node backend/scripts/attack.js",
+    "benchmark": "npm --prefix contracts exec -- hardhat run scripts/benchmark.js",
+    "start": "node scripts/dev.mjs",
+    "e2e": "node e2e/smoke.js && node e2e/flow.js",
+    "e2e:attack": "node e2e/attack.js"
+  }
+}
