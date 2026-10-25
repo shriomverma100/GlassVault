@@ -245,6 +245,10 @@ await page.context().close();
 // ── Act 12 · red team: duplicate + forgery → automatic freeze → dead-man switch ──
 page = await open("watcher", "/watchtower");
 for (const step of [2, 3]) {
+  await sleep(1500);
+  if ((await api("/api/state")).ngos[1].frozen) break;
+  const ok = page.getByRole("button", { name: "Understood" });
+  if (await ok.isVisible().catch(() => false)) await ok.click();
   const done = page.waitForResponse((r) => r.url().includes("/api/demo/attack/") && r.request().method() === "POST", { timeout: 60_000 });
   await page.getByRole("button", { name: "Run", exact: true }).nth(step).click();
   await done;
