@@ -1,8 +1,11 @@
 // One command to run the whole platform from scratch:
 //   chain A (:8545) + chain B (:8546) → deploy contracts → backend (:4000) → seed real history → frontend (:5173)
 //
-//   npm start            fresh chains, deploy, seed, run everything
-//   npm start -- --no-seed   same, but leave the chain empty
+//   npm start                     fresh chains, deploy, seed, run everything (dev server, hot reload)
+//   npm start -- --no-seed        same, but leave the chain empty
+//   npm start -- --prod           serve the optimized production build instead of the dev server
+//   npm start -- --profile=test   isolated stack on ports +10000 with its own state dir (.gv/test),
+//                                 so e2e runs never touch a developer's running session
 //
 // Ctrl+C stops every process.
 import { spawn } from "node:child_process";
@@ -12,7 +15,25 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const seed = !process.argv.includes("--no-seed");
+const prod = process.argv.includes("--prod");
+const profile = process.argv.find((a) => a.startsWith("--profile="))?.split("=")[1] ?? "default";
 const children = [];
+
+// The default profile keeps the historical ports and folders; any other profile is offset and isolated.
+const isolated = profile !== "default";
+const off = isolated ? 10_000 : 0;
+const P = { a: 8545 + off, b: 8546 + off, api: 4000 + off, web: 5173 + off };
+const STATE = isolated ? path.join(ROOT, ".gv", profile) : null;
+const ENV = {
+  RPC_A: `http://127.0.0.1:${P.a}`,
+  RPC_B: `http://127.0.0.1:${P.b}`,
+  PORT: String(P.api),
+  API: `http://localhost:${P.api}`,
+  GV_API: `http://localhost:${P.api}`,
+  GV_WEB_PORT: String(P.web),
+  ...(STATE ? { GV_SHARED_DIR: path.join(STATE, "shared"), GV_DATA_DIR: path.join(STATE, "data") } : {}),
+};
+const DATA_DIR = ENV.GV_DATA_DIR ?? path.join(ROOT, "backend", "data");
 
 const tag = (name) => (line) => line.trim() && console.log(`[${name}] ${line}`);
 function run(name, cmd, cwd, { quiet = false, env } = {}) {
@@ -21,7 +42,7 @@ function run(name, cmd, cwd, { quiet = false, env } = {}) {
   const child = spawn(cmd, {
     cwd: path.join(ROOT, cwd),
     shell: true,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...ENV, ...env },
     stdio: ["ignore", quiet ? "ignore" : "pipe", "pipe"],
   });
   children.push(child);
@@ -65,28 +86,33 @@ process.on("SIGTERM", shutdown);
 
 try {
   console.log("▸ starting chains");
-  run("chainA", "npx hardhat node --port 8545", "contracts", { quiet: true });
-  run("chainB", "npx hardhat node --port 8546", "contracts", { quiet: true, env: { CHAIN_ID: "31338" } });
-  await waitFor("http://127.0.0.1:8545", rpc, "chain A");
-  await waitFor("http://127.0.0.1:8546", rpc, "chain B");
+  run("chainA", `npx hardhat node --port ${P.a}`, "contracts", { quiet: true });
+  run("chainB", `npx hardhat node --port ${P.b}`, "contracts", { quiet: true, env: { CHAIN_ID: "31338" } });
+  await waitFor(ENV.RPC_A, rpc, "chain A");
+  await waitFor(ENV.RPC_B, rpc, "chain B");
 
   console.log("▸ deploying contracts to both chains");
   await once("deploy", "npm run deploy", "contracts");
-  fs.rmSync(path.join(ROOT, "backend", "data"), { recursive: true, force: true }); // fresh chain → fresh off-chain index
+  fs.rmSync(DATA_DIR, { recursive: true, force: true }); // fresh chain → fresh off-chain index
 
   console.log("▸ starting backend");
   run("backend", "node src/server.js", "backend");
-  await waitFor("http://localhost:4000/api/health", null, "backend");
+  await waitFor(`${ENV.API}/api/health`, null, "backend");
 
   if (seed) {
     console.log("▸ seeding real on-chain history");
     await once("seed", "node scripts/seed.js", "backend");
   }
 
+  if (prod) {
+    console.log("▸ building frontend (production)");
+    await once("build", "npx vite build", "frontend");
+  }
   console.log("▸ starting frontend");
-  run("frontend", "npx vite --port 5173 --strictPort", "frontend");
-  await waitFor("http://localhost:5173", null, "frontend");
-  console.log("\n  GlassVault is live → http://localhost:5173\n  (Ctrl+C to stop everything)\n");
+  run("frontend", prod ? "npx vite preview" : "npx vite", "frontend");
+  const url = `http://localhost:${P.web}`;
+  await waitFor(url, null, "frontend");
+  console.log(`\n  GlassVault is live → ${url}  (${prod ? "production build" : "dev server"}, profile ${profile})\n  (Ctrl+C to stop everything)\n`);
 } catch (e) {
   console.error(`✖ ${e.message}`);
   shutdown();

@@ -9,3 +9,4 @@ backend/data/
 shared/
 e2e/node_modules/
 e2e/shots/
+.gv/

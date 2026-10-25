@@ -18,6 +18,8 @@
     "lint": "npm --prefix frontend run lint",
     "build": "npm --prefix contracts run compile && npm --prefix frontend run build",
     "check": "npm test && npm run benchmark && npm run lint && npm run build",
-    "perf": "node e2e/perf.js"
+    "perf": "node e2e/perf.js",
+    "start:prod": "node scripts/dev.mjs --prod",
+    "start:test": "node scripts/dev.mjs --prod --profile=test"
   }
 }

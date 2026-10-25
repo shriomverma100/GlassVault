@@ -9,7 +9,7 @@ module.exports = {
   networks: {
     // `npm run chain:b` starts a second node with CHAIN_ID=31338 on port 8546.
     hardhat: { chainId: Number(process.env.CHAIN_ID || 31337) },
-    chainA: { url: "http://127.0.0.1:8545", chainId: 31337 },
-    chainB: { url: "http://127.0.0.1:8546", chainId: 31338 },
+    chainA: { url: process.env.RPC_A || "http://127.0.0.1:8545", chainId: 31337 },
+    chainB: { url: process.env.RPC_B || "http://127.0.0.1:8546", chainId: 31338 },
   },
 };

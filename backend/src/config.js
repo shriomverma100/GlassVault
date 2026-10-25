@@ -5,11 +5,12 @@ import { ethers } from "ethers";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(here, "..", "..");
-export const DATA_DIR = path.resolve(here, "..", "data");
+export const DATA_DIR = path.resolve(process.env.GV_DATA_DIR || path.join(here, "..", "data"));
+export const SHARED_DIR = path.resolve(process.env.GV_SHARED_DIR || path.join(ROOT_DIR, "shared"));
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 export function loadDeployment(name) {
-  const file = path.join(ROOT_DIR, "shared", `deployment.${name}.json`);
+  const file = path.join(SHARED_DIR, `deployment.${name}.json`);
   if (!fs.existsSync(file)) throw new Error(`Missing ${file} — run \`npm run deploy\` in contracts/ first`);
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }

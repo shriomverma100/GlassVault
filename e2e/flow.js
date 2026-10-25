@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const BASE = process.env.BASE || "http://localhost:5173";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const shot = (n) => fileURLToPath(new URL(`./shots/${n}.png`, import.meta.url));
-const api = (p) => fetch(`http://localhost:4000${p}`).then((r) => r.json());
+const api = (p) => fetch(`${process.env.API || "http://localhost:4000"}${p}`).then((r) => r.json());
 
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

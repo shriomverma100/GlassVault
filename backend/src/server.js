@@ -8,7 +8,7 @@ import path from "node:path";
 import { WebSocketServer } from "ws";
 import { ethers } from "ethers";
 import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
-import { chains, ROLES, roleKey, RELAYER_KEY, WATCHER_KEY, ROOT_DIR } from "./config.js";
+import { chains, ROLES, roleKey, RELAYER_KEY, WATCHER_KEY, ROOT_DIR, RPC_A, RPC_B } from "./config.js";
 import { db, save, putFile, getFileByCid } from "./store.js";
 import { Indexer } from "./indexer.js";
 import { Watcher } from "./watcher.js";
@@ -48,7 +48,7 @@ app.get("/api/health", (_q, res) => ok(res, { ok: true, indexed: indexer.events.
 /// Everything the frontend needs to talk to the chains directly.
 app.get("/api/config", (_q, res) => {
   const roles = Object.fromEntries(Object.entries(ROLES).map(([role, index]) => [role, { index, address: new ethers.Wallet(roleKey(role)).address }]));
-  ok(res, { chainA: depA, chainB: depB, rpcA: "http://127.0.0.1:8545", rpcB: "http://127.0.0.1:8546", roles, categories: CATEGORY });
+  ok(res, { chainA: depA, chainB: depB, rpcA: RPC_A, rpcB: RPC_B, roles, categories: CATEGORY });
 });
 
 app.get("/api/state", (_q, res) => ok(res, indexer.state));

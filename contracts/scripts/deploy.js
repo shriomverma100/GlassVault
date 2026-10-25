@@ -34,7 +34,8 @@ async function main() {
   }
 
   // Shared with backend + frontend.
-  const file = path.join(__dirname, "..", "..", "shared", `deployment.${network.name}.json`);
+  const sharedDir = process.env.GV_SHARED_DIR || path.join(__dirname, "..", "..", "shared");
+  const file = path.join(sharedDir, `deployment.${network.name}.json`);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(out, null, 2));
   for (const [k, v] of Object.entries(out)) if (v?.address) console.log(`${k.padEnd(14)} ${v.address}`);
