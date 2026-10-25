@@ -20,3 +20,6 @@ export function inrCompact(v, unit = inrUnitFor(v)) {
   const n = (v ?? 0) / UNITS[unit];
   return { value: `₹${n.toFixed(n >= 100 ? 0 : unit === "Cr" ? 2 : 1)}`, unit };
 }
+
+/// Probability 0..1 → "94%" (null/undefined → "—").
+export const pct = (p) => (p == null || Number.isNaN(Number(p)) ? "—" : `${Math.round(Number(p) * 100)}%`);

@@ -24,6 +24,7 @@ role is a funded wallet on the local chain and every action is a real signed tra
 | `npm run attack` | Live red-team attack on the running chain (also available as buttons in Watchtower) |
 | `npm run e2e` / `npm run e2e:attack` | Headless browser tests that drive the real UI |
 | `npm run check` | Contract tests + benchmark + lint + production build — must pass before every merge |
+| `npm run confidence` | Re-runs the probabilistic evaluation chain from public state and checks every published score |
 | `npm run perf` | UI responsiveness probe (page-switch latency, scroll settle, dropped frames) against the running app, compared to `e2e/perf-baseline.json` |
 
 ## The 4 evaluation roots
@@ -34,6 +35,24 @@ role is a funded wallet on the local chain and every action is a real signed tra
 | **② Escrow condition** | Category must match, shares must fit each lot's budget and add up to the invoice, lot must not be expired. A challenge window opens; after it, anyone can release 70%. No admin role exists. Missed deadline or a freeze → donors reclaim. | NGO console, Passport |
 | **③ Off-chain invoice proof** | Vendor signs the invoice fields (EIP-712). File hash on-chain, file stored by IPFS CID. A field-level **nullifier** `keccak(vendor, invoiceNo, date, amount)` is global across all NGOs, so a re-scanned invoice still collides. **Fiat off-ramp:** when money is spent at a local cash/bank-only vendor, a staked payment agent signs a `FiatSettlement` (amount, hashed bank UTR, hashed payee, date); a bank reference can settle only one payout. | Vendor portal, NGO pre-checks |
 | **④ Impact verification** | An **independent, staked field partner** (never the NGO) creates beneficiary cards in its browser and attests the card list on-chain (`attestBatch`); an NGO can only pay out against an attested list. Each QR card holds a private key: at handover the card **signs** "delivered for payout #id" (EIP-712), so the key never goes on-chain and a signature can't be replayed for another payout. Only a Merkle root of card addresses goes on-chain — no names; delivery = Merkle proof of the signer + one-time delivery nullifier. The final 30% is paid only after enough deliveries — and, for off-ramp payouts, after the rupee payment is proven; donors receive a soulbound Proof-of-Impact token. | Field app, Passport |
+
+## Probabilistic evaluation chain
+
+Every donation gets a probability per stage, in the order the problem statement gives:
+**Inbound Donation → Escrow Condition → Cryptographic Impact Verification → Off-Chain Invoice Proof.**
+Each stage starts at 1 and is multiplied by named evidence factors; chain confidence = the product.
+
+| Stage | Example factors (multiplier) |
+|---|---|
+| Inbound | on-chain deposit (×1) · ETH swap event (×1) · single bridge relayer (×0.97) · hop not reconstructed (×0.9) |
+| Escrow | contract-held, no admin key (×1) · contract not externally audited (×0.99) |
+| Impact | card signatures k/k (×1) or partial (×0.5 + 0.5·k/n) · partner-attested list (×0.97) · expired / cancelled (×0) |
+| Invoice | signed + unique nullifier (×1) · open challenge window (×0.95) · disputed (×0.6) · watcher near-duplicate (×0.4) · rupee payment proven (×0.95) / awaiting (×0.85) / overdue (×0.5) · Benford drift (×0.85–0.95) · NGO flags / discrepancies · fraud upheld or unexplained transfer (×0) |
+
+Spent money is weighted by the rupees each payout took from the donation. The formula is open and
+deterministic (`backend/src/confidence.js`): `GET /api/confidence/:lotId` shows every factor, and
+`npm run confidence` re-runs it from public state and checks every published score. It is
+**informational** — only contract rules move or freeze money.
 
 ## How fraud is caught (without a central auditor)
 

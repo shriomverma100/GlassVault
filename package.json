@@ -21,6 +21,7 @@
     "perf": "node e2e/perf.js",
     "start:prod": "node scripts/dev.mjs --prod",
     "start:test": "node scripts/dev.mjs --prod --profile=test",
-    "e2e:full": "node scripts/e2e.mjs"
+    "e2e:full": "node scripts/e2e.mjs",
+    "confidence": "node backend/scripts/confidence.js"
   }
 }

@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { ethers } from "ethers";
 import { db } from "./store.js";
+import { annotate } from "./confidence.js";
 
 const CATEGORY = ["Water", "Medical", "Education"];
 const PAYOUT_STATUS = ["None", "Pending", "Released", "Completed", "Challenged", "Cancelled"];
@@ -14,6 +15,8 @@ export class Indexer extends EventEmitter {
   constructor({ depA, depB, providerA, providerB }) {
     super();
     this.vault = new ethers.Contract(depA.GlassVault.address, depA.GlassVault.abi, providerA);
+    this.homeChainId = depA.chainId;
+    this.providerA = providerA;
     this.tokenA = new ethers.Contract(depA.DINR.address, depA.DINR.abi, providerA);
     this.gatewayA = new ethers.Contract(depA.BridgeGateway.address, depA.BridgeGateway.abi, providerA);
     this.gatewayB = new ethers.Contract(depB.BridgeGateway.address, depB.BridgeGateway.abi, providerB);
@@ -291,7 +294,13 @@ export class Indexer extends EventEmitter {
       ledger,
     };
 
-    this.state = { ngos, lots, payouts, vendors, fieldPartners, batches, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
+    const state = { ngos, lots, payouts, vendors, fieldPartners, batches, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
+    // probabilistic evaluation chain — chain time, because local chains can run ahead of the wall clock
+    const now = (await this.providerA.getBlock("latest"))?.timestamp ?? Math.floor(Date.now() / 1000);
+    // the two non-chain inputs are published too, so anyone can re-run the formula on this snapshot
+    state.chainTime = now;
+    for (const p of payouts) p.receiptAvailable = Boolean(db.files?.[p.fileHash]);
+    this.state = annotate(state, { homeChainId: this.homeChainId, findings: db.watcherFindings ?? [], files: db.files ?? {}, now });
   }
 
   /// How a bridged lot got here, hop by hop: (swap →) send on the source chain → relay → lot.

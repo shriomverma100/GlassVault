@@ -10,6 +10,8 @@ import { Section, Card, Button, Input, Segmented, StatusBadge, Rupees, HashText,
 import { IconOrb } from "../components/ui/primitives";
 import ProofSpine from "../components/ProofSpine";
 import Journey from "../components/Journey";
+import ConfidenceChain from "../components/ConfidenceChain";
+import { pct } from "../lib/format";
 import { CategoryIcon, BridgeIcon, VaultIcon, GavelIcon, RefundIcon, CheckIcon, CrossIcon, InvoiceIcon, ScaleIcon } from "../components/icons";
 
 export default function Passport() {
@@ -68,6 +70,12 @@ function LotList() {
                     <div className="font-display text-[22px] font-normal">
                       {l.category} · {ngo?.name}
                     </div>
+                    {l.confidence?.score != null && (
+                      <div className="mt-1 text-[13px] text-ash">
+                        Proof confidence <span className="font-medium text-obsidian tabular">{pct(l.confidence.score)}</span>
+                        {l.confidence.provisional && " · provisional"}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="text-[13px] text-graphite">Donated</div>
@@ -235,6 +243,14 @@ function LotDetail({ lotId }) {
       <motion.div variants={fadeUp} className="border-t border-hairline">
         <ProofSpine steps={spineSteps} />
       </motion.div>
+
+      {lot.confidence && (
+        <motion.div variants={fadeUp}>
+          <Section eyebrow="How sure can you be? Evidence per stage" title="Probabilistic evaluation chain">
+            <ConfidenceChain confidence={lot.confidence} lotId={lot.id} />
+          </Section>
+        </motion.div>
+      )}
 
       <motion.div variants={fadeUp}>
         <Section eyebrow="Every hop, every chain, every rupee" title="Journey of this donation">

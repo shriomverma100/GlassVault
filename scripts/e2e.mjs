@@ -55,7 +55,7 @@ const ready = new Promise((resolve, reject) => {
 let failed = [];
 try {
   await ready;
-  for (const step of ["e2e/smoke.js", "e2e/signup.js", "e2e/multihop.js", "e2e/flow.js", "e2e/attack.js", "e2e/perf.js"]) {
+  for (const step of ["e2e/smoke.js", "e2e/confidence.js", "e2e/signup.js", "e2e/multihop.js", "e2e/flow.js", "e2e/attack.js", "e2e/perf.js"]) {
     console.log(`\n▸ ${step}`);
     if (!(await runStep(step))) failed.push(step);
   }

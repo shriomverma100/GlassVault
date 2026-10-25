@@ -11,6 +11,7 @@ import { chains, ROLES, roleKey, RELAYER_KEY, WATCHER_KEY, FAUCET_GAS_KEY, ROOT_
 import { authRouter, sessionMiddleware } from "./auth.js";
 import { db, save, putFile, getFileByCid } from "./store.js";
 import { Indexer } from "./indexer.js";
+import { FORMULA_VERSION } from "./confidence.js";
 import { Watcher } from "./watcher.js";
 import { Relayer } from "./relayer.js";
 import { reconcile } from "./reconcile.js";
@@ -55,6 +56,12 @@ app.get("/api/config", (_q, res) => {
 });
 
 app.get("/api/state", (_q, res) => ok(res, indexer.state));
+// Probabilistic evaluation chain for one donation: every stage, every factor, the formula version.
+app.get("/api/confidence/:lotId", (req, res) => {
+  const lot = indexer.state?.lots[Number(req.params.lotId)];
+  if (!lot) return res.status(404).json({ error: "No such donation" });
+  ok(res, { lotId: lot.id, formulaVersion: FORMULA_VERSION, ...lot.confidence });
+});
 app.get("/api/flow", (_q, res) => ok(res, indexer.flow()));
 app.get("/api/events", (req, res) => ok(res, indexer.events.slice(-Number(req.query.limit || 100)).reverse()));
 app.get("/api/watcher", (_q, res) => ok(res, watcher.findings));

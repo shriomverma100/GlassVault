@@ -6,7 +6,7 @@ import { fadeUp, liquid, stagger } from "../lib/motion";
 import { labeler, eventSentence, eventTone } from "../lib/derive";
 import { KpiStat, IconOrb } from "../components/ui/primitives";
 import { Section, Card, StatusBadge, Rupees, Button } from "../components/ui/kit";
-import { inrCompact, inrUnitFor } from "../lib/format";
+import { inrCompact, inrUnitFor, pct } from "../lib/format";
 import ProofSpine from "../components/ProofSpine";
 import SankeyFlow from "../components/explore/SankeyFlow";
 import { ScaleIcon, VaultIcon, FingerprintIcon, InvoiceIcon, QrIcon, CrossIcon, CheckIcon } from "../components/icons";
@@ -45,6 +45,7 @@ export default function Explore() {
           <KpiStat label="Proofs" value={s.proofs.toLocaleString("en-IN")} />
           <KpiStat label="Verified" value={s.verifiedPct} unit="%" />
           <KpiStat label="Frauds caught" value={s.fraudsCaught} />
+          {s.confidence?.mean != null && <KpiStat label="Proof confidence" value={pct(s.confidence.mean)} />}
         </div>
       </motion.section>
 
@@ -116,6 +117,11 @@ function NgoCard({ ngo, state }) {
           <div>
             Bond <Rupees value={ngo.bond} />
           </div>
+          {ngo.confidence?.score != null && (
+            <div>
+              Proof confidence <span className="font-medium text-obsidian tabular">{pct(ngo.confidence.score)}</span>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-bone">
