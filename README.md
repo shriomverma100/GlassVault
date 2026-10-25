@@ -13,6 +13,7 @@
 ![ethers](https://img.shields.io/badge/ethers-v6-2535A0)
 ![Contract tests](https://img.shields.io/badge/contract%20tests-64%20passing-brightgreen)
 ![PS acceptance](https://img.shields.io/badge/PS%204.2%20acceptance-12%2F12-brightgreen)
+![Judges drill](https://img.shields.io/badge/judges%20drill%20%28live%20link%29-14%2F14-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 CASCADE '26 · Theme 4 · **PS 4.2 — The Black Hole Ledger: Verifiable NGO Fund Flows**
@@ -220,6 +221,7 @@ login, and a "Next for you" strip listing exactly what needs them now.
 | Red-team benchmark — 100 receipts, 30% fraudulent | **30 / 30 caught · 0 / 70 false alarms** | `npm run benchmark` |
 | End-to-end browser suites on an isolated production build (smoke, tours, evaluation chain, Sign-In with Ethereum, MetaMask journey, sign-up, multi-hop, flow, red-team, performance) | **all passing** | `npm run e2e:full` |
 | Judges' demo — 14 acts, every role, every PS requirement | **9 / 9 requirements covered** | `npm run demo:rehearse` |
+| **Live drill through the public link** (26 Oct 2026) — the judges' sequence, all roles, plus every e2e suite against the hosted URL | **14 / 14 steps · all suites pass** | [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md) |
 | Escrow invariant — vault balance = lots + reserved + bonds + stakes + challenge bonds | **gap ₹0** | live in Watchtower |
 | UI responsiveness — page switch / scroll lag | **~115 ms / 0 ms** (from 1.5 s / 720 ms) | `npm run perf` |
 | Independent security review | 2 high + 4 medium found → **all fixed with regression tests** | see [SECURITY.md](SECURITY.md) |
@@ -239,7 +241,8 @@ npm run start:prod        # 2 chains → deploy → backend → seeded history �
 
 Sign in with a demo account (local chains only — the **Sign in** page lists them with one-click fill),
 or create your own account with a password or **MetaMask**. The judges' walkthrough is in
-[demo/DEMO-RUNBOOK.md](demo/DEMO-RUNBOOK.md).
+[demo/DEMO-RUNBOOK.md](demo/DEMO-RUNBOOK.md); the step-by-step drill with the reason for every step is
+[demo/JUDGES-DRILL.md](demo/JUDGES-DRILL.md), and the drill results are in [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md).
 
 | Command | What it does |
 |---|---|

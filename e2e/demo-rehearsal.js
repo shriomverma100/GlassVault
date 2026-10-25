@@ -12,7 +12,8 @@ const BASE = process.env.BASE || "http://localhost:5173";
 const API = process.env.API || "http://localhost:4000";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const kit = (f) => fileURLToPath(new URL(`../demo/kit/${f}`, import.meta.url));
-const shot = (n) => fileURLToPath(new URL(`../demo/shots/${n}.png`, import.meta.url));
+// GV_SHOTS: save the act screenshots somewhere else (e.g. the judges drill folder)
+const shot = (n) => (process.env.GV_SHOTS ? `${process.env.GV_SHOTS}/${n}.png` : fileURLToPath(new URL(`../demo/shots/${n}.png`, import.meta.url)));
 const api = (p) => fetch(`${API}${p}`).then((r) => r.json());
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(fn, what, ms = 90_000) {
@@ -172,6 +173,8 @@ for (const [i, key] of cards.keys.entries()) {
   await page.getByText("Card is on this payout's approved list.").waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: "Confirm handover on-chain" }).click();
   await until(async () => (await api("/api/state")).payouts[payout.id].deliveries === i + 1, `delivery ${i + 1}`);
+  // the indexer can see the delivery before the browser's own receipt poll returns (slower over a tunnel)
+  await page.getByRole("button", { name: "Confirming…" }).waitFor({ state: "detached", timeout: 60_000 });
 }
 await until(async () => (await api("/api/state")).payouts[payout.id].status === "Completed", "impact verified");
 await page.context().close();

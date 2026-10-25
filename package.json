@@ -27,7 +27,7 @@
     "stop": "node scripts/stop.mjs",
     "demo:kit": "node demo/make-kit.mjs",
     "demo:rehearse": "node e2e/demo-rehearsal.js",
-    "share": "cloudflared tunnel --no-autoupdate --url http://localhost:5173"
+    "share": "node scripts/share.mjs"
   },
   "engines": {
     "node": ">=22.5"

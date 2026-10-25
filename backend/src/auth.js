@@ -1,4 +1,7 @@
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
+import { ROOT_DIR } from "./config.js";
 import { randomBytes } from "node:crypto";
 import { ethers } from "ethers";
 import {
@@ -57,6 +60,17 @@ const ALLOWED_HOSTS = new Set(
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean),
 );
+/// Public tunnel hosts the operator shared from this machine (written by `npm run share` into
+/// .gv/shared-hosts.txt — a local file only the operator can write, never a request header).
+const SHARED_HOSTS_FILE = path.join(ROOT_DIR, ".gv", "shared-hosts.txt");
+function hostAllowed(host) {
+  if (ALLOWED_HOSTS.has(host)) return true;
+  try {
+    return fs.readFileSync(SHARED_HOSTS_FILE, "utf8").split(/\s+/).map((h) => h.trim().toLowerCase()).includes(host);
+  } catch {
+    return false;
+  }
+}
 const hostOf = (uri) => {
   try {
     return new URL(uri).host.toLowerCase();
@@ -181,7 +195,7 @@ export function authRouter({ depA, depB, providerA, providerB, funderKey, gasKey
       return fail("Invalid signature");
     }
     if (signer !== m.address) return fail("Signature does not match the address");
-    if (!ALLOWED_HOSTS.has(m.domain.toLowerCase()) || hostOf(m.uri) !== m.domain.toLowerCase()) return fail("Sign-in message is for a different site");
+    if (!hostAllowed(m.domain.toLowerCase()) || hostOf(m.uri) !== m.domain.toLowerCase()) return fail("Sign-in message is for a different site");
     const expires = siweNonces.get(m.nonce);
     siweNonces.delete(m.nonce); // single use, even when the rest fails
     if (!expires || expires < Date.now()) return fail("Sign-in request expired — try again");

@@ -53,10 +53,13 @@ export async function ensureChain(provider, { chainId, name, rpcUrl }) {
   }
 }
 
-/// The two GlassVault chains as MetaMask sees them (RPC URLs come from the backend config).
+/// The two GlassVault chains as MetaMask sees them (RPC URLs come from the backend config). Opened
+/// through a public link, 127.0.0.1 would be the visitor's own machine, so MetaMask gets this site's
+/// /rpcA and /rpcB proxies instead.
+const remote = typeof location !== "undefined" && !["localhost", "127.0.0.1"].includes(location.hostname);
 export const chainSpecs = (config) => ({
-  A: { chainId: config.chainA.chainId, name: "GlassVault Chain A (local)", rpcUrl: config.walletRpcA ?? config.rpcA },
-  B: { chainId: config.chainB.chainId, name: "GlassVault Chain B (local)", rpcUrl: config.walletRpcB ?? config.rpcB },
+  A: { chainId: config.chainA.chainId, name: "GlassVault Chain A (local)", rpcUrl: remote ? `${location.origin}/rpcA` : (config.walletRpcA ?? config.rpcA) },
+  B: { chainId: config.chainB.chainId, name: "GlassVault Chain B (local)", rpcUrl: remote ? `${location.origin}/rpcB` : (config.walletRpcB ?? config.rpcB) },
 });
 
 /// Standard EIP-4361 message — MetaMask shows it as a sign-in request for this site.

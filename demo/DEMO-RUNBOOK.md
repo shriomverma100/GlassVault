@@ -3,6 +3,8 @@
 Every act below was rehearsed end to end through the real UI by `e2e/demo-rehearsal.js`
 (14 acts, every role, every PS 4.2 requirement). Screenshots of each act are in `demo/shots/`.
 
+**Step-by-step version with the reason for every step:** [JUDGES-DRILL.md](JUDGES-DRILL.md) · results: [../docs/DRILL-REPORT.md](../docs/DRILL-REPORT.md)
+
 ## 0 · Before the judges arrive (5 minutes)
 
 1. Stop anything old and start fresh — an old server makes sign-up fail:
