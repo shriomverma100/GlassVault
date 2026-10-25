@@ -17,6 +17,10 @@
 
 CASCADE '26 · Theme 4 · **PS 4.2 — The Black Hole Ledger: Verifiable NGO Fund Flows**
 
+**[▶ Live platform](https://fly-feed-singles-three.trycloudflare.com)** · demo logins on the Sign in page
+
+<sub>Hosted from the team laptop through a Cloudflare tunnel — online during the event; if the link is down, run it locally in two commands (see Getting started).</sub>
+
 <img src="docs/images/landing.png" alt="GlassVault landing page: every rupee, provable" width="900">
 
 </div>
