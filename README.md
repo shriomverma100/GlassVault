@@ -6,7 +6,6 @@
 
 **A verifiable donation platform where an NGO can't move donated money without proof — and can't fake the proof.**
 
-[![CI](https://github.com/shriomverma100/GlassVault/actions/workflows/ci.yml/badge.svg)](https://github.com/shriomverma100/GlassVault/actions/workflows/ci.yml)
 ![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity)
 ![OpenZeppelin](https://img.shields.io/badge/OpenZeppelin-5-4E5EE4?logo=openzeppelin)
 ![Hardhat](https://img.shields.io/badge/Hardhat-2-FFF100)
