@@ -6,7 +6,7 @@
 //   node scripts/attack.js <step>     → run one step (shell | doctored | duplicate | forged | verdict)
 import { ethers } from "ethers";
 import { pathToFileURL } from "node:url";
-import { setup, api, uploadFile, renderReceipt, signInvoice, advance, inr, CAT } from "./lib.js";
+import { setup, api, uploadFile, renderReceipt, signInvoice, advance, inr, CAT, issueBatch } from "./lib.js";
 
 const SHADOW = 1;
 
@@ -42,7 +42,7 @@ export async function runAttack(step, ctx = setup()) {
       const fields = { vendor: address("vendorShell"), ngoId: SHADOW, invoiceNo: "QF-0077", amount: Math.min(45_000, lot.remaining), date, category: CAT.Water, fileHash: file.fileHash };
       const { typed, signature } = await signInvoice(ctx, "vendorShell", fields);
       await api("/api/invoices", { ...fields, signature });
-      const batch = await api("/api/beneficiaries", { count: 2, label: "Shadow Trust 'beneficiaries'", ngoId: SHADOW });
+      const batch = await issueBatch(ctx, { ngoId: SHADOW, count: 2, label: "Shadow Trust 'beneficiaries'" });
       await send(vault.requestPayout(typed, signature, [{ lotId: lot.id, amount: inr(fields.amount) }], batch.root, 2));
       return { step, note: `Doctored photo submitted as QF-0077 (₹${fields.amount.toLocaleString("en-IN")}) — passes on-chain checks, watcher should challenge` };
     }

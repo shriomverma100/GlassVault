@@ -3,10 +3,11 @@ import { motion } from "framer-motion";
 import { api, ipfsUrl } from "../../lib/api";
 import { useApp } from "../../lib/store";
 import { CATEGORIES, fromWei, toWei } from "../../lib/chain";
+import { labeler } from "../../lib/derive";
 import { liquid } from "../../lib/motion";
-import { Button, Card, Drawer, Field, HashText, Input, Rupees } from "../ui/kit";
+import { Button, Card, Field, HashText, Input, Rupees } from "../ui/kit";
 import { CategoryIcon } from "../icons";
-import { CheckRow, FRAUD_REASONS, QrCards, humanize, sameAddr, useApiList, useReceiptCid } from "./shared";
+import { CheckRow, FRAUD_REASONS, humanize, sameAddr, useApiList, useReceiptCid } from "./shared";
 
 /// FIFO allocation across this NGO's open lots of the right category.
 function allocate(lots, amount) {
@@ -22,7 +23,8 @@ function allocate(lots, amount) {
 }
 
 export default function PreparePayout({ ngo, invoice, onDone }) {
-  const { state, chain, c, tx, toast, chainNow } = useApp("state", "chain", "c", "tx", "toast", "chainNow");
+  const { state, config, chain, c, tx, toast, chainNow } = useApp("state", "config", "chain", "c", "tx", "toast", "chainNow");
+  const nameOf = useMemo(() => labeler(config), [config]);
   const category = CATEGORIES[invoice.category];
   const [amount, setAmount] = useState(String(invoice.amount));
   const openLots = useMemo(
@@ -35,7 +37,11 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setShares(allocate(openLots, amount)), [amount, lotsKey]);
 
-  const [batches, reloadBatches] = useApiList(`/api/beneficiaries?ngoId=${ngo.id}`);
+  // Only lists attested on-chain by an independent field partner for THIS NGO can back a payout — the NGO
+  // can't issue its own beneficiaries. Labels come from the off-chain index; the attestation is on-chain.
+  const [published] = useApiList(`/api/beneficiaries?ngoId=${ngo.id}`);
+  const labels = useMemo(() => new Map(published.map((b) => [b.root.toLowerCase(), b.label])), [published]);
+  const batches = useMemo(() => (state.batches ?? []).filter((b) => b.ngoId === ngo.id), [state.batches, ngo.id]);
   const [root, setRoot] = useState(null);
   const [rootCount, setRootCount] = useState(0); // cards in the chosen batch — the most deliveries it can ever prove
   const [required, setRequired] = useState(1);
@@ -47,9 +53,6 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
   // one batch proves one payout: the contract rejects a beneficiary root that already backs a payout
   const usedRoots = useMemo(() => new Map(state.payouts.map((p) => [p.beneficiaryRoot.toLowerCase(), p.id])), [state.payouts]);
   const rootUsedBy = root ? usedRoots.get(root.toLowerCase()) : undefined;
-  const [newCount, setNewCount] = useState("5");
-  const [newLabel, setNewLabel] = useState("");
-  const [cards, setCards] = useState(null);
   const [busy, setBusy] = useState(false);
   const cid = useReceiptCid(invoice.fileHash, invoice);
 
@@ -80,15 +83,6 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
   const impactOk = !!root && rootUsedBy === undefined && required > 0 && required <= rootCount;
   const allOk = sigOk && vendorOk && nullifierUsed === false && budgetOk && impactOk;
 
-  async function createBatch() {
-    const count = Number(newCount);
-    if (!(count > 0)) return;
-    const out = await api.post("/api/beneficiaries", { count, label: newLabel || `${invoice.invoiceNo} recipients`, ngoId: ngo.id });
-    setCards({ label: newLabel || `${invoice.invoiceNo} recipients`, cards: out.cards });
-    pickBatch(out.root, out.count);
-    reloadBatches();
-  }
-
   /// The indexer view can lag a block behind. Re-read every charged lot from the chain; if a share
   /// that fitted the shown balance no longer fits, re-allocate instead of sending a stale request.
   async function sharesStillFit() {
@@ -103,8 +97,8 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
   }
 
   async function submit() {
-    if (!root) return toast({ title: "Impact proof required", body: "Attach a beneficiary batch first — root ④ is mandatory.", tone: "error" });
-    if (rootUsedBy !== undefined) return toast({ title: "Batch already used", body: `These cards already prove payout #${rootUsedBy}. Issue a fresh batch for this invoice.`, tone: "error" });
+    if (!root) return toast({ title: "Impact proof required", body: "Pick a beneficiary list attested by a field partner — root ④ is mandatory.", tone: "error" });
+    if (rootUsedBy !== undefined) return toast({ title: "List already used", body: `These cards already prove payout #${rootUsedBy}. Ask a field partner for a fresh list.`, tone: "error" });
     setBusy(true);
     try {
       if (!(await sharesStillFit())) return;
@@ -212,8 +206,11 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
         </Card>
 
         <Card className="p-5">
-          <div className="text-[14px] font-medium">Impact proof — beneficiary batch</div>
-          <div className="mt-1 text-[13px] text-graphite">Only a fingerprint of the card list goes on-chain — no names. The last 30% is paid after this many cards confirm delivery.</div>
+          <div className="text-[14px] font-medium">Impact proof — beneficiary list</div>
+          <div className="mt-1 text-[13px] text-graphite">
+            Issued and attested by an independent field partner — you can't add your own beneficiaries. Only the list's fingerprint is on-chain, no names. The last 30% is
+            paid after this many cards confirm delivery.
+          </div>
           <div className="mt-4 flex flex-col gap-2">
             {batches.map((b) => {
               const usedBy = usedRoots.get(b.root.toLowerCase());
@@ -221,33 +218,25 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
                 <button
                   key={b.root}
                   disabled={usedBy !== undefined}
-                  onClick={() => pickBatch(b.root, b.count)}
+                  onClick={() => pickBatch(b.root, b.cards)}
                   className={`flex items-center justify-between rounded-full border px-4 py-2 text-left text-[13px] disabled:cursor-not-allowed ${
                     usedBy !== undefined ? "border-dashed border-hairline bg-paper text-ash" : root === b.root ? "border-obsidian bg-signal-mist" : "border-hairline bg-white"
                   }`}
                 >
-                  <span>{b.label || "Batch"}</span>
+                  <span>{labels.get(b.root.toLowerCase()) || "Beneficiary list"}</span>
                   <span className="text-ash">
-                    {usedBy !== undefined ? `used by payout #${usedBy}` : `${b.count} cards`} · <span className="font-mono">{b.root.slice(0, 8)}…</span>
+                    {usedBy !== undefined ? `used by payout #${usedBy}` : `attested by ${nameOf(b.partner)} · ${b.cards} cards`}
                   </span>
                 </button>
               );
             })}
           </div>
-          {batches.length > 0 && batches.every((b) => usedRoots.has(b.root.toLowerCase())) && (
-            <div className="mt-2 text-[13px] text-ash">Every batch already proves another payout. Issue a fresh batch for this invoice.</div>
+          {batches.every((b) => usedRoots.has(b.root.toLowerCase())) && (
+            <div className="mt-2 rounded-[var(--radius-tile)] border border-dashed border-hairline bg-white p-3 text-[13px] text-ash">
+              {batches.length ? "Every attested list already proves another payout." : "No beneficiary list attested for your NGO yet."} Ask a field partner to issue cards
+              for your NGO.
+            </div>
           )}
-          <div className="mt-4 flex items-end gap-2 border-t border-hairline pt-4">
-            <Field label="New batch label">
-              <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="e.g. Wadgaon households" />
-            </Field>
-            <Field label="Cards">
-              <Input type="number" min="1" className="w-20" value={newCount} onChange={(e) => setNewCount(e.target.value)} />
-            </Field>
-            <Button variant="ghost" onClick={createBatch}>
-              Issue cards
-            </Button>
-          </div>
           {root && (
             <div className="mt-4 flex items-center gap-3">
               <Field label="Deliveries required" hint={`1–${rootCount}: a batch can't prove more deliveries than it has cards`}>
@@ -279,8 +268,8 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
           <CheckRow ok={budgetOk} label="Within donor budgets" detail={budgetOk ? "Shares add up and stay inside each lot" : "Shares must equal the amount and fit each lot"} />
           <CheckRow
             ok={impactOk}
-            label="Impact proof attached"
-            detail={impactOk ? `${required} beneficiary confirmations required` : rootUsedBy !== undefined ? `Batch already proves payout #${rootUsedBy} — issue a fresh one` : "Pick or issue a beneficiary batch"}
+            label="Beneficiary list attested by an independent field partner"
+            detail={impactOk ? `${required} card confirmations required` : rootUsedBy !== undefined ? `List already proves payout #${rootUsedBy} — ask for a fresh one` : "Pick a list a field partner attested for you"}
           />
         </div>
         <div className="mt-auto pt-5">
@@ -296,12 +285,6 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
         </div>
       </Card>
 
-      <Drawer open={!!cards} onClose={() => setCards(null)} title="Beneficiary QR cards">
-        {cards && <QrCards cards={cards.cards} label={cards.label} />}
-        <Button variant="ghost" className="mt-4" onClick={() => window.print()}>
-          Print cards
-        </Button>
-      </Drawer>
     </motion.div>
   );
 }

@@ -15,7 +15,7 @@ const ROOT_DETAILS = [
   { icon: <VaultIcon />, title: "Tagged lot", text: "Every donation becomes a lot that remembers its donor, purpose and deadline — even across chains." },
   { icon: <ScaleIcon />, title: "Rules, not people", text: "Category, budget and a public challenge window. No admin can move or unfreeze money." },
   { icon: <FingerprintIcon />, title: "Signed + nullified", text: "Vendor signs the invoice fields. A global nullifier stops the same bill being used twice." },
-  { icon: <QrIcon />, title: "Proven delivery", text: "Beneficiaries confirm with a QR card. A Merkle proof shows they're on the list — names never go on-chain." },
+  { icon: <QrIcon />, title: "Proven delivery", text: "An independent field partner issues QR cards. Each card signs its own delivery — no names, no secrets on-chain, no card used twice." },
 ];
 
 export default function Explore() {

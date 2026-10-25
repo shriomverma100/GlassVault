@@ -27,27 +27,30 @@ async function main() {
   const t0 = Date.now();
   const { renderReceipt } = await backend("scripts/lib.js");
   const { differenceHash, hamming } = await backend("src/store.js");
-  const [deployer, ngo, vendor, colluder, donor] = await ethers.getSigners();
+  const [deployer, ngo, vendor, colluder, donor, partner] = await ethers.getSigners();
   const shell = ethers.Wallet.createRandom();
 
   const dinr = await ethers.deployContract("DINR");
   const gw = await ethers.deployContract("BridgeGateway", [await dinr.getAddress(), deployer.address]);
   const vault = await ethers.deployContract("GlassVault", [await dinr.getAddress(), 60, await gw.getAddress()]);
-  for (const s of [ngo, vendor, colluder, donor]) {
+  for (const s of [ngo, vendor, colluder, donor, partner]) {
     await dinr.mint(s.address, inr(100_000_000));
     await dinr.connect(s).approve(await vault.getAddress(), ethers.MaxUint256);
   }
   await vault.connect(ngo).registerNGO("Benchmark NGO");
   await vault.connect(vendor).registerVendor(0, ethers.id("honest vendor"));
   await vault.connect(colluder).registerVendor(0, ethers.id("colluding vendor")); // registered + staked, signs fake invoices
+  await vault.connect(partner).registerFieldPartner(ethers.id("independent field partner")); // attests every card list
   const deadline = (await ethers.provider.getBlock("latest")).timestamp + 365 * 86400;
   await vault.connect(donor).donate(0, 0, inr(50_000_000), deadline); // lot 0
 
-  // each payout needs its own beneficiary batch (a root can back only one payout)
+  // each payout needs its own card list (a root can back only one payout), attested by the field partner
   let batch = 0;
-  const freshRoot = () => {
-    const leaf = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.id(`card-${batch++}`)]));
-    return StandardMerkleTree.of([[leaf]], ["bytes32"]).root;
+  const freshRoot = async () => {
+    const card = new ethers.Wallet(ethers.id(`card-${batch++}`));
+    const root = StandardMerkleTree.of([[card.address]], ["address"]).root;
+    await vault.connect(partner).attestBatch(root, 0, 1);
+    return root;
   };
 
   const { chainId } = await ethers.provider.getNetwork();
@@ -119,7 +122,7 @@ async function main() {
 
     const dh = await differenceHash(photo);
     const snap = item.kind === "genuine" ? null : await network.provider.send("evm_snapshot");
-    const rc = await (await vault.connect(ngo).requestPayout(inv, sig, [{ lotId: 0, amount: inv.amount }], freshRoot(), 1)).wait();
+    const rc = await (await vault.connect(ngo).requestPayout(inv, sig, [{ lotId: 0, amount: inv.amount }], await freshRoot(), 1)).wait();
     const flagged = rc.logs.some((l) => vault.interface.parseLog(l)?.name === "FraudFlagged");
     const flagEv = rc.logs.map((l) => vault.interface.parseLog(l)).find((p) => p?.name === "FraudFlagged");
     const nearDup = !flagged && acceptedHashes.some((h) => hamming(h, dh) <= NEAR_DUP);
@@ -135,9 +138,9 @@ async function main() {
   // ── live finale on the same chain: two frauds in a row freeze the NGO ──
   const g0 = genuine[0];
   const reuse = { vendor: vendor.address, ngoId: 0, invoiceNo: ethers.id(g0.no), amount: inr(g0.amount), date, category: 0, fileHash: ethers.id("rescan") };
-  await vault.connect(ngo).requestPayout(reuse, await vendor.signTypedData(domain, types, reuse), [{ lotId: 0, amount: reuse.amount }], freshRoot(), 1);
+  await vault.connect(ngo).requestPayout(reuse, await vendor.signTypedData(domain, types, reuse), [{ lotId: 0, amount: reuse.amount }], await freshRoot(), 1);
   const forged = { ...reuse, invoiceNo: ethers.id("FORGED-1"), amount: inr(99_999) };
-  await vault.connect(ngo).requestPayout(forged, await ngo.signTypedData(domain, types, forged), [{ lotId: 0, amount: forged.amount }], freshRoot(), 1);
+  await vault.connect(ngo).requestPayout(forged, await ngo.signTypedData(domain, types, forged), [{ lotId: 0, amount: forged.amount }], await freshRoot(), 1);
   const frozen = (await vault.ngo(0)).frozen;
 
   // ── metrics ──

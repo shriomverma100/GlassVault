@@ -409,7 +409,7 @@ function LotDetail({ lotId }) {
                 "—"
               )}
             </KV>
-            <KV k="Beneficiary Merkle root">
+            <KV k="Beneficiary list fingerprint (Merkle root)">
               <HashText value={p.beneficiaryRoot} n={6} />
             </KV>
             <KV k="Deliveries">

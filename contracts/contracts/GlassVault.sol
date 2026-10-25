@@ -96,6 +96,20 @@ contract GlassVault is EIP712, ReentrancyGuard {
         uint64 paidAt;
     }
 
+    /// @notice Independent field partner: issues beneficiary cards and attests each card list.
+    struct FieldPartner {
+        bool registered;
+        bytes32 nameHash;
+        uint256 stake;
+    }
+
+    /// @notice A beneficiary card list (Merkle root of card addresses) attested by a field partner for one NGO.
+    struct Batch {
+        address partner;
+        uint256 ngoId;
+        uint32 cards;
+    }
+
     struct LotShare {
         uint256 lotId;
         uint256 amount;
@@ -116,6 +130,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
         "Invoice(address vendor,uint256 ngoId,bytes32 invoiceNo,uint256 amount,uint64 date,uint8 category,bytes32 fileHash)"
     );
 
+    bytes32 public constant DELIVERY_TYPEHASH = keccak256("Delivery(uint256 payoutId)");
+
     bytes32 public constant FIAT_TYPEHASH = keccak256(
         "FiatSettlement(uint256 payoutId,uint256 fiatAmount,bytes32 bankRefHash,bytes32 payeeHash,uint64 paidAt)"
     );
@@ -124,6 +140,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
     uint256 public constant INVOICE_RELEASE_BPS = 7000; // 70% on invoice proof, 30% on impact proof
     uint256 public constant NGO_BOND = 10_000 ether;    // dINR (18 decimals)
     uint256 public constant VENDOR_STAKE = 5_000 ether;
+    uint256 public constant FIELD_STAKE = 2_000 ether;
     uint256 public constant CHALLENGE_BOND = 500 ether;
 
     // ─────────────────────────── state ───────────────────────────
@@ -141,6 +158,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
     mapping(uint256 => Challenge) internal _challenges;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
     mapping(address => Vendor) public vendors;
+    mapping(address => FieldPartner) public fieldPartners;
+    /// @notice Card lists by Merkle root. Only an attested list can back a payout.
+    mapping(bytes32 => Batch) public batches;
 
     /// @notice Global invoice nullifier set — shared across every NGO and every donor.
     mapping(bytes32 => uint256) public nullifierToPayout; // payoutId + 1 (0 = unused)
@@ -171,6 +191,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
     event Discrepancy(uint256 indexed ngoId, FraudReason reason, bytes32 nullifier, bytes32 fileHash);
     event VendorSlashed(address indexed vendor, uint256 amount, bytes32 nullifier);
     event OffRampRegistered(address indexed agent);
+    event FieldPartnerRegistered(address indexed partner, bytes32 nameHash, uint256 stake);
+    event BatchAttested(bytes32 indexed root, uint256 indexed ngoId, address indexed partner, uint32 cards);
     event FiatSettled(uint256 indexed payoutId, address indexed agent, uint256 fiatAmount, bytes32 bankRefHash, bytes32 payeeHash, uint64 paidAt);
     event UnexplainedTransfer(uint256 indexed payoutId, address indexed agent, address indexed reporter, uint256 reward);
     event Challenged(uint256 indexed payoutId, address indexed challenger, bytes32 evidenceHash, string evidenceURI, uint64 voteEnd);
@@ -204,6 +226,10 @@ contract GlassVault is EIP712, ReentrancyGuard {
     error NotOffRamp();
     error BadSettlement();
     error SettlementOpen();
+    error NotFieldPartner();
+    error BadBatch();
+    error BatchNotAttested();
+    error TooManyDeliveries();
 
     constructor(IERC20 token_, uint64 challengeWindow_, address bridgeGateway_) EIP712("GlassVault", "1") {
         token = token_;
@@ -249,6 +275,28 @@ contract GlassVault is EIP712, ReentrancyGuard {
         v.stake = VENDOR_STAKE;
         emit VendorRegistered(msg.sender, category, nameHash, VENDOR_STAKE);
         if (due > 0) token.safeTransferFrom(msg.sender, address(this), due);
+    }
+
+    /// @notice Field partners stake to issue beneficiary cards. They are independent of the NGO, so an
+    ///         NGO can't invent beneficiaries and confirm its own deliveries.
+    function registerFieldPartner(bytes32 nameHash) external nonReentrant {
+        FieldPartner storage f = fieldPartners[msg.sender];
+        if (f.registered) revert BadBatch();
+        f.registered = true;
+        f.nameHash = nameHash;
+        f.stake = FIELD_STAKE;
+        emit FieldPartnerRegistered(msg.sender, nameHash, FIELD_STAKE);
+        token.safeTransferFrom(msg.sender, address(this), FIELD_STAKE);
+    }
+
+    /// @notice A field partner vouches for a card list it issued for one NGO. Only the root and the card
+    ///         count go on-chain — card keys stay on the printed cards, names never leave the field.
+    function attestBatch(bytes32 root, uint256 ngoId, uint32 cards) external {
+        if (!fieldPartners[msg.sender].registered) revert NotFieldPartner();
+        if (msg.sender == _ngo(ngoId).admin) revert NotFieldPartner(); // the NGO can't vouch for itself
+        if (root == bytes32(0) || cards == 0 || batches[root].partner != address(0)) revert BadBatch();
+        batches[root] = Batch({partner: msg.sender, ngoId: ngoId, cards: cards});
+        emit BatchAttested(root, ngoId, msg.sender, cards);
     }
 
     // ─────────────────── ① inbound donation ──────────────────────
@@ -343,6 +391,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
             total += shares[i].amount;
         }
         if (total != inv.amount) return _discrepancy(inv.ngoId, FraudReason.AmountMismatch, nullifier, inv.fileHash);
+        Batch memory batch = batches[beneficiaryRoot];
+        if (batch.partner == address(0) || batch.ngoId != inv.ngoId) revert BatchNotAttested();
+        if (deliveriesRequired > batch.cards) revert TooManyDeliveries();
         if (rootUsed[beneficiaryRoot]) revert RootAlreadyUsed();
 
         // all checks passed — reserve funds and open the challenge window
@@ -393,19 +444,26 @@ contract GlassVault is EIP712, ReentrancyGuard {
 
     // ───────────── ④ cryptographic impact verification ─────────────
 
-    /// @notice A beneficiary's QR card holds `secret`. The NGO only published a Merkle root of
-    ///         commitments, so identities never touch the chain.
-    /// @dev leaf = keccak256(bytes.concat(keccak256(abi.encode(commitment)))), commitment = keccak256(abi.encode(secret))
-    function confirmDelivery(uint256 payoutId, bytes32 secret, bytes32[] calldata proof) external nonReentrant {
+    function deliveryDigest(uint256 payoutId) public view returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(DELIVERY_TYPEHASH, payoutId)));
+    }
+
+    /// @notice A beneficiary's QR card holds a private key. At handover the card signs "delivered for
+    ///         payout #id" — the key itself never leaves the card, so it can't be replayed or copied for
+    ///         another payout. The signer must be on the payout's attested card list (Merkle proof);
+    ///         a one-time nullifier stops the same card confirming twice. No identity touches the chain.
+    /// @dev leaf = keccak256(bytes.concat(keccak256(abi.encode(cardAddress)))) — OZ StandardMerkleTree(["address"]).
+    function confirmDelivery(uint256 payoutId, bytes calldata cardSig, bytes32[] calldata proof) external nonReentrant {
         Payout storage p = _payout(payoutId);
         if (p.status != PayoutStatus.Pending && p.status != PayoutStatus.Released) revert BadPayout();
         if (_ngos[p.ngoId].frozen) revert NGOIsFrozen();
 
-        bytes32 commitment = keccak256(abi.encode(secret));
-        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(commitment))));
+        (address card, ECDSA.RecoverError err,) = ECDSA.tryRecover(deliveryDigest(payoutId), cardSig);
+        if (err != ECDSA.RecoverError.NoError) revert InvalidProof();
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(card))));
         if (!MerkleProof.verifyCalldata(proof, p.beneficiaryRoot, leaf)) revert InvalidProof();
 
-        bytes32 deliveryNullifier = keccak256(abi.encode(payoutId, commitment));
+        bytes32 deliveryNullifier = keccak256(abi.encode(payoutId, card));
         if (deliveryUsed[deliveryNullifier]) revert AlreadyDelivered();
         deliveryUsed[deliveryNullifier] = true;
 

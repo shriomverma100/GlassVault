@@ -80,10 +80,15 @@ const TASKS = {
       ...pending.map((p) => ({ text: `Payout #${p.id}: ${p.status.toLowerCase()}`, to: "/vendor" })),
     ];
   },
-  Field(state) {
-    return state.payouts
+  Field(state, me) {
+    const partner = (state.fieldPartners ?? []).find((p) => sameAddr(p.address, me));
+    if (!partner?.registered) {
+      return [{ text: partner ? "This field-partner wallet was slashed" : "Register as a field partner (₹2,000 stake)", to: "/field", urgent: true }];
+    }
+    const scans = state.payouts
       .filter((p) => (p.status === "Pending" || p.status === "Released") && p.deliveries < p.deliveriesRequired && !state.ngos[p.ngoId]?.frozen)
       .map((p) => ({ text: `Payout #${p.id}: ${p.deliveriesRequired - p.deliveries} cards to scan`, to: "/field" }));
+    return [...scans, { text: "Issue cards for an NGO", to: "/field" }];
   },
   Watcher(state, me, now) {
     const open = state.payouts.filter((p) => p.status === "Pending" && now < p.releaseAt && !state.ngos[p.ngoId]?.frozen);

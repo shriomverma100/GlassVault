@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 
 export const CATEGORIES = ["Water", "Medical", "Education"];
 export const CAT = { Water: 0, Medical: 1, Education: 2 };
@@ -114,7 +115,30 @@ export function makeChain(config) {
   const invoiceNullifier = (f) =>
     ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["address", "bytes32", "uint64", "uint256"], [f.vendor, ethers.id(f.invoiceNo), f.date, toWei(f.amount)]));
 
-  return { providerA, providerB, contracts, signInvoice, recoverInvoiceSigner, typedInvoice, invoiceNullifier, signFiatSettlement, typedFiat, supportsFiat, A, B };
+  // ── beneficiary cards: each card is a key pair; its QR holds the private key, the list holds addresses ──
+  const deliveryTypes = { Delivery: [{ name: "payoutId", type: "uint256" }] };
+  /// A card signs "I received payout #id". The key never goes on-chain — only this signature does,
+  /// so a used card can't be replayed for another payout or copied from the mempool.
+  const signDelivery = (cardWallet, payoutId) => cardWallet.signTypedData(domain, deliveryTypes, { payoutId: BigInt(payoutId) });
+
+  return { providerA, providerB, contracts, signInvoice, recoverInvoiceSigner, typedInvoice, invoiceNullifier, signFiatSettlement, typedFiat, supportsFiat, signDelivery, deliveryTypes, A, B };
+}
+
+/// Builds a beneficiary batch in the browser: n fresh card keys and the Merkle tree of their addresses.
+/// Only `dump` (addresses) and `root` ever leave the browser; the keys are printed on the cards.
+export function cardBatch(n) {
+  const wallets = Array.from({ length: n }, () => ethers.Wallet.createRandom());
+  const tree = StandardMerkleTree.of(wallets.map((w) => [w.address]), ["address"]);
+  return { wallets, tree, root: tree.root, dump: tree.dump() };
+}
+
+/// Card key from a scanned/pasted QR → in-memory wallet, or null if it isn't a valid key.
+export function cardFromKey(text) {
+  try {
+    return new ethers.Wallet(String(text).trim());
+  } catch {
+    return null;
+  }
 }
 
 /// Turns a revert into a readable reason using the contract's custom errors.

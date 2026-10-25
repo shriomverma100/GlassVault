@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, ROOT, freshRoot } = require("./fixture");
+const { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, ROOT, freshRoot, batch, attest, signDelivery } = require("./fixture");
 
 const S = { Pending: 1, Released: 2, Completed: 3, Challenged: 4, Cancelled: 5 };
 const in30d = async () => (await time.latest()) + 30 * 86400;
@@ -12,7 +12,7 @@ async function pendingPayout() {
   await f.vault.connect(f.donorA).donate(0, Category.Water, inr(50_000), await in30d());
   await f.vault.connect(f.donorB).donate(0, Category.Water, inr(30_000), await in30d());
   const { inv, sig } = await signInvoice(f.vault, f.vendor, { vendor: f.vendor.address, amount: inr(40_000) });
-  await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(30_000) }, { lotId: 1, amount: inr(10_000) }], freshRoot(), 1);
+  await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(30_000) }, { lotId: 1, amount: inr(10_000) }], await batch(f.vault, 0, 1), 1);
   return f;
 }
 
@@ -94,7 +94,7 @@ describe("Challenge court — donors decide, no auditor", () => {
     await vault.connect(stranger).challenge(0, ethers.id("e"), "");
     for (const no of ["F1", "F2"]) {
       const f = await signInvoice(vault, ngoAdmin, { vendor: vendor.address, amount: inr(1), invoiceNo: no });
-      await vault.connect(ngoAdmin).requestPayout(f.inv, f.sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 1);
+      await vault.connect(ngoAdmin).requestPayout(f.inv, f.sig, [{ lotId: 0, amount: inr(1) }], await batch(vault, 0, 1), 1);
     }
     await expect(vault.unwindFrozen(0)).to.be.revertedWithCustomError(vault, "BadPayout");
   });
@@ -106,7 +106,7 @@ describe("Hardening", () => {
     const { inv, sig } = await signInvoice(f.vault, f.vendor, { vendor: f.vendor.address, amount: inr(1), invoiceNo: "N" });
     await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], ethers.ZeroHash, 1))
       .to.be.revertedWithCustomError(f.vault, "ImpactProofRequired");
-    await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 0))
+    await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], await batch(f.vault, 0, 0), 0))
       .to.be.revertedWithCustomError(f.vault, "ImpactProofRequired");
   });
 
@@ -120,7 +120,7 @@ describe("Hardening", () => {
     await expect(f.vault.connect(f.donorA).donate(0, Category.Water, inr(1), await time.latest())).to.be.revertedWithCustomError(f.vault, "DeadlineTooSoon");
     await time.increase(31 * 86400);
     const { inv, sig } = await signInvoice(f.vault, f.vendor, { vendor: f.vendor.address, amount: inr(1), invoiceNo: "LATE" });
-    await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 1))
+    await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1) }], await batch(f.vault, 0, 1), 1))
       .to.be.revertedWithCustomError(f.vault, "LotExpired");
   });
 
@@ -150,7 +150,7 @@ describe("Refunds", () => {
     // two forged invoices → auto-freeze
     for (const no of ["F1", "F2"]) {
       const f = await signInvoice(vault, ngoAdmin, { vendor: vendor.address, amount: inr(1), invoiceNo: no });
-      await vault.connect(ngoAdmin).requestPayout(f.inv, f.sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 1);
+      await vault.connect(ngoAdmin).requestPayout(f.inv, f.sig, [{ lotId: 0, amount: inr(1) }], await batch(vault, 0, 1), 1);
     }
     expect((await vault.ngo(0)).frozen).to.equal(true);
     await vault.unwindFrozen(0);
@@ -172,8 +172,8 @@ describe("Proof-of-Impact soulbound token", () => {
     await f.vault.connect(f.donorB).donate(0, Category.Water, inr(5_000), await in30d());
     const ben = beneficiaryTree(1);
     const { inv, sig } = await signInvoice(f.vault, f.vendor, { vendor: f.vendor.address, amount: inr(6_000) });
-    await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(3_000) }, { lotId: 1, amount: inr(3_000) }], ben.root, 1);
-    await f.vault.confirmDelivery(0, ben.secrets[0], ben.proofFor(0));
+    await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(3_000) }, { lotId: 1, amount: inr(3_000) }], await attest(f.vault, ben.root, 0, ben.wallets.length), 1);
+    await f.vault.confirmDelivery(0, await ben.sign(f.vault, 0, 0), ben.proofFor(0));
     await time.increase(WINDOW);
     await f.vault.release(0);
 
@@ -191,15 +191,15 @@ describe("Trust score", () => {
     await f.vault.connect(f.donorA).donate(0, Category.Water, inr(1_000), await in30d());
     const ben = beneficiaryTree(1);
     const { inv, sig } = await signInvoice(f.vault, f.vendor, { vendor: f.vendor.address, amount: inr(1_000) });
-    await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1_000) }], ben.root, 1);
-    await f.vault.confirmDelivery(0, ben.secrets[0], ben.proofFor(0));
+    await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1_000) }], await attest(f.vault, ben.root, 0, ben.wallets.length), 1);
+    await f.vault.confirmDelivery(0, await ben.sign(f.vault, 0, 0), ben.proofFor(0));
     await time.increase(WINDOW);
     await f.vault.release(0); // delivery already proven → completes
     expect(await f.vault.trustScore(0)).to.equal(100);
 
     for (const no of ["X1", "X2"]) {
       const x = await signInvoice(f.vault, f.ngoAdmin, { vendor: f.vendor.address, amount: inr(1), invoiceNo: no });
-      await f.vault.connect(f.ngoAdmin).requestPayout(x.inv, x.sig, [{ lotId: 0, amount: inr(1) }], freshRoot(), 1);
+      await f.vault.connect(f.ngoAdmin).requestPayout(x.inv, x.sig, [{ lotId: 0, amount: inr(1) }], await batch(f.vault, 0, 1), 1);
     }
     expect(await f.vault.trustScore(0)).to.equal(0);
   });

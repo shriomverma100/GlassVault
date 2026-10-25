@@ -2,7 +2,7 @@
 // from chain B), and one payout taken all the way through the 4 roots. Every step is a real
 // transaction; the backend must be running (it indexes, stores files and relays the bridge).
 import { ethers } from "ethers";
-import { setup, api, uploadFile, renderReceipt, signInvoice, advance, sleep, inr, CAT } from "./lib.js";
+import { setup, api, uploadFile, renderReceipt, signInvoice, advance, sleep, inr, CAT, issueBatch, confirmWithCard } from "./lib.js";
 import { roleKey } from "../src/config.js";
 import { createAccount, userByUsername } from "../src/accounts.js";
 
@@ -19,7 +19,7 @@ const SEED_ACCOUNTS = [
   ["medicare", "vendorMedical", "Vendor", "MediCare Supplies"],
   ["vidya", "vendorEducation", "Vendor", "Vidya Books"],
   ["quickfix", "vendorShell", "Vendor", "QuickFix Traders"],
-  ["field", "fieldWorker", "Field", "Field worker"],
+  ["field", "fieldWorker", "Field", "Sahyog Field Partners"],
   ["watcher", "watcher", "Watcher", "Watcher"],
   ["paylink", "offrampAgent", "Vendor", "PayLink Fiat Agents"],
 ];
@@ -72,6 +72,9 @@ await wait(vaultAs("vendorMedical").registerVendor(CAT.Medical, ethers.id("GSTIN
 await wait(vaultAs("vendorEducation").registerVendor(CAT.Education, ethers.id("GSTIN 29AADCV9012L1Z8 · Vidya Books")));
 await wait(vaultAs("offrampAgent").registerOffRamp(CAT.Water, ethers.id("RBI PA licence · PayLink Fiat Agents")));
 log("PayLink Fiat Agents registered as a fiat off-ramp (Water)");
+// independent card issuer: beneficiary lists come from a staked field partner, never from the NGO itself
+await wait(vaultAs("fieldWorker").registerFieldPartner(ethers.id("Sahyog Field Partners · field verification")));
+log("Sahyog Field Partners registered as an independent field partner (₹2,000 stake)");
 
 console.log("3. donations (purpose-tagged lots)");
 const donations = [
@@ -122,7 +125,7 @@ const fields = { vendor: address("vendorWater"), ngoId: 0, invoiceNo: "BW-1042",
 const { typed, signature } = await signInvoice(ctx, "vendorWater", fields);
 const invoice = await api("/api/invoices", { ...fields, signature, lineItems: items });
 
-const batch = await api("/api/beneficiaries", { count: 3, label: "Wadgaon village handpumps", ngoId: 0 });
+const batch = await issueBatch(ctx, { ngoId: 0, count: 3, label: "Wadgaon village handpumps" });
 await wait(vaultAs("ngoAsha").requestPayout(typed, signature, [{ lotId: 0, amount: inr(30_000) }, { lotId: 1, amount: inr(10_000) }], batch.root, 3));
 await api(`/api/invoices/${invoice.id}/status`, { status: "submitted" });
 log("payout #0 requested · challenge window open");
@@ -134,7 +137,7 @@ const plFile = await uploadFile(plPng, "PL-5521.png");
 const plFields = { vendor: address("offrampAgent"), ngoId: 0, invoiceNo: "PL-5521", amount: 20_000, date, category: CAT.Water, fileHash: plFile.fileHash };
 const pl = await signInvoice(ctx, "offrampAgent", plFields);
 const plInvoice = await api("/api/invoices", { ...plFields, signature: pl.signature, lineItems: plItems });
-const plBatch = await api("/api/beneficiaries", { count: 2, label: "Wadgaon handpump repairs", ngoId: 0 });
+const plBatch = await issueBatch(ctx, { ngoId: 0, count: 2, label: "Wadgaon handpump repairs" });
 await wait(vaultAs("ngoAsha").requestPayout(pl.typed, pl.signature, [{ lotId: swappedLot, amount: inr(20_000) }], plBatch.root, 2));
 await api(`/api/invoices/${plInvoice.id}/status`, { status: "submitted" });
 log(`hop 3 · payout #1 requested from lot #${swappedLot} to off-ramp PayLink (PL-5521, ₹20,000)`);
@@ -145,13 +148,8 @@ log("window closed · 70% released to BlueWell Pumps");
 await wait(vaultAs("fieldWorker").release(1));
 log("hop 4 · payout #1: 70% (₹14,000) released to PayLink on-chain");
 
-const { StandardMerkleTree } = await import("@openzeppelin/merkle-tree");
-const tree = StandardMerkleTree.load((await api(`/api/beneficiaries/${batch.root}`)).dump);
-for (const card of batch.cards) {
-  const proof = tree.getProof([card.commitment]);
-  await wait(vaultAs("fieldWorker").confirmDelivery(0, card.secret, proof));
-}
-log("3/3 beneficiaries confirmed by QR · final 30% released · Proof-of-Impact minted");
+for (const card of batch.wallets) await confirmWithCard(ctx, batch, card, 0);
+log("3/3 beneficiary cards signed delivery · final 30% released · Proof-of-Impact minted");
 
 // off-chain fiat leg: PayLink pays the shop by bank transfer, then signs what it paid (EIP-712)
 const settlement = {
@@ -174,8 +172,7 @@ const fiatTypes = {
 const fiatSig = await new ethers.Wallet(roleKey("offrampAgent")).signTypedData(fiatDomain, fiatTypes, settlement);
 await wait(vaultAs("offrampAgent").attestFiat(settlement, fiatSig));
 log("hop 5 · PayLink attested ₹20,000 paid by bank (UTR hash) to Gram Jal Hardware (payee hash)");
-const plTree = StandardMerkleTree.load((await api(`/api/beneficiaries/${plBatch.root}`)).dump);
-for (const card of plBatch.cards) await wait(vaultAs("fieldWorker").confirmDelivery(1, card.secret, plTree.getProof([card.commitment])));
+for (const card of plBatch.wallets) await confirmWithCard(ctx, plBatch, card, 1);
 log("hop 6 · 2/2 beneficiaries confirmed · fiat + delivery proven → final 30% paid · impact verified");
 
 console.log("6. a second payout left OPEN for the live demo (Medical, window running)");
@@ -185,10 +182,10 @@ const file2 = await uploadFile(png2, "MC-311.png");
 const f2 = { vendor: address("vendorMedical"), ngoId: 0, invoiceNo: "MC-311", amount: 50_000, date, category: CAT.Medical, fileHash: file2.fileHash };
 const s2 = await signInvoice(ctx, "vendorMedical", f2);
 await api("/api/invoices", { ...f2, signature: s2.signature, lineItems: items2 });
-const batch2 = await api("/api/beneficiaries", { count: 5, label: "PHC Kamptee diabetic patients", ngoId: 0 });
+const batch2 = await issueBatch(ctx, { ngoId: 0, count: 5, label: "PHC Kamptee diabetic patients" });
 console.log("   (invoice MC-311 is signed and waiting in Asha Foundation's inbox)");
-console.log(`   beneficiary card secrets for batch ${batch2.root.slice(0, 10)}… :`);
-batch2.cards.forEach((c) => console.log(`     card ${c.n}: ${c.secret}`));
+console.log(`   printed QR cards for batch ${batch2.root.slice(0, 10)}… (attested by Sahyog) — each card holds its own key:`);
+batch2.wallets.forEach((w, i) => console.log(`     card ${i + 1}: ${w.privateKey}  (card address ${w.address})`));
 
 await seedAccounts();
 console.log("\n✔ seeded. Open the dashboard.");

@@ -34,6 +34,8 @@ export class Indexer extends EventEmitter {
     this.challengeRewards = 0; // everything paid to challengers whose challenge was upheld
     this.reclaimed = new Map(); // lotId → rupees a donor took back
     this.vendors = new Map();
+    this.fieldPartners = new Set(); // independent card issuers (they stake; the vault holds the stake)
+    this.batches = new Map(); // beneficiary root → who attested it, for which NGO, how many cards
     this.state = null;
     this.blockTimes = new Map();
   }
@@ -111,6 +113,10 @@ export class Indexer extends EventEmitter {
     if (parsed.name === "Reclaimed") this.reclaimed.set(Number(args.lotId), (this.reclaimed.get(Number(args.lotId)) ?? 0) + fmt(args.amount));
     if (parsed.name === "VendorRegistered") this.vendors.set(args.vendor, true);
     if (parsed.name === "OffRampRegistered") this.vendors.set(args.agent, true);
+    if (parsed.name === "FieldPartnerRegistered") this.fieldPartners.add(args.partner);
+    if (parsed.name === "BatchAttested") {
+      this.batches.set(args.root, { root: args.root, ngoId: Number(args.ngoId), partner: args.partner, cards: Number(args.cards), tx: ev.tx, time: ev.time });
+    }
     if (parsed.name === "DonationSwapped") this.hops.swapped.set(`${src.chain}:${args.nonce}`, { dex: args.dex, ethIn: fmt(args.ethIn), dinrOut: fmt(args.dinrOut), tx: ev.tx, time: ev.time });
     if (parsed.name === "DonationSent") this.hops.sent.set(`${src.chain}:${args.nonce}`, { donor: args.donor, amount: fmt(args.amount), destChain: Number(args.destChain), tx: ev.tx, time: ev.time });
     if (parsed.name === "DonationDelivered") this.hops.delivered.set(Number(args.lotId), { sourceChain: Number(args.sourceChain), nonce: args.nonce, tx: ev.tx, time: ev.time });
@@ -221,6 +227,16 @@ export class Indexer extends EventEmitter {
       }),
     );
 
+    const fieldPartners = has("fieldPartners")
+      ? await Promise.all(
+          [...this.fieldPartners].map(async (addr) => {
+            const x = await v.fieldPartners(addr);
+            return { address: addr, registered: Boolean(x.registered), nameHash: x.nameHash, stake: fmt(x.stake) };
+          }),
+        )
+      : [];
+    const batches = [...this.batches.values()];
+
     const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
 
     // Escrow ledger: every rupee the vault holds must belong to a lot, an open payout, a bond, a stake
@@ -232,6 +248,7 @@ export class Indexer extends EventEmitter {
       sum(payouts.filter((p) => !["Completed", "Cancelled"].includes(p.status)), (p) => p.amount - p.paid) +
       sum(ngos, (n) => n.bond) +
       sum(vendors, (x) => x.stake) +
+      sum(fieldPartners, (x) => x.stake) +
       openChallenges * fmt(challengeBond);
     const vaultBalance = fmt(vaultBal);
     const ledger = { vaultBalance, accounted, gap: Math.round((vaultBalance - accounted) * 100) / 100 };
@@ -250,7 +267,7 @@ export class Indexer extends EventEmitter {
       ledger,
     };
 
-    this.state = { ngos, lots, payouts, vendors, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
+    this.state = { ngos, lots, payouts, vendors, fieldPartners, batches, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
   }
 
   /// How a bridged lot got here, hop by hop: (swap →) send on the source chain → relay → lot.

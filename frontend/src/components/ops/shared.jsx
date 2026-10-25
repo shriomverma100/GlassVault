@@ -81,7 +81,8 @@ export function ProgressRing({ value, max, size = 120, label }) {
   );
 }
 
-/// Printable grid of beneficiary QR cards. Secrets are shown exactly once (only commitments are stored).
+/// Printable grid of beneficiary QR cards. Each QR is the card's private key, shown exactly once — only
+/// the card addresses are stored, so nobody can re-issue or copy a card later.
 export function QrCards({ cards, label }) {
   const [urls, setUrls] = useState({});
   useEffect(() => {
@@ -96,8 +97,8 @@ export function QrCards({ cards, label }) {
   return (
     <div>
       <div className="mb-4 rounded-[var(--radius-tile)] border border-obsidian bg-signal-mist p-4 text-[13px]">
-        These secrets are shown <b>once</b>. Print or save them now — only their commitments are kept, so nobody (including GlassVault)
-        can re-issue a card.
+        These card keys are shown <b>once</b>. Print them now and hand each card to its beneficiary — only the card addresses are kept, so
+        nobody (including GlassVault or the NGO) can re-issue or copy a card.
       </div>
       <div className="grid grid-cols-2 gap-3">
         {cards.map((c) => (
@@ -107,7 +108,9 @@ export function QrCards({ cards, label }) {
               <span className="font-mono">#{String(c.n).padStart(3, "0")}</span>
             </div>
             {urls[c.n] ? <img src={urls[c.n]} alt={`QR card ${c.n}`} className="mx-auto my-3 h-40 w-40" /> : <div className="my-3 h-40" />}
-            <div className="font-mono text-[12px] leading-tight break-all text-ash">{c.secret}</div>
+            <div data-card-key className="font-mono text-[12px] leading-tight break-all text-ash">
+              {c.secret}
+            </div>
           </div>
         ))}
       </div>

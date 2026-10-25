@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 import { Jimp, loadFont } from "jimp";
 import { SANS_16_BLACK, SANS_32_BLACK } from "jimp/fonts";
 import { chains, roleKey } from "../src/config.js";
@@ -112,6 +113,27 @@ export async function signInvoice(ctx, signer, f) {
   const typed = { vendor: f.vendor, ngoId: f.ngoId, invoiceNo: ethers.id(f.invoiceNo), amount: inr(f.amount), date: f.date, category: f.category, fileHash: f.fileHash };
   const signature = await new ethers.Wallet(roleKey(signer)).signTypedData(domain, TYPES, typed);
   return { typed, signature };
+}
+
+const DELIVERY_TYPES = { Delivery: [{ name: "payoutId", type: "uint256" }] };
+
+/// Issues a beneficiary batch the way a field partner does: each QR card is a fresh wallet created on
+/// the issuer's machine (the printed card holds its private key), only the card ADDRESSES are
+/// published as a Merkle tree, and the partner attests the root on-chain for this NGO.
+export async function issueBatch(ctx, { ngoId, count, label, partner = "fieldWorker" }) {
+  const wallets = Array.from({ length: count }, () => ethers.Wallet.createRandom());
+  const tree = StandardMerkleTree.of(wallets.map((w) => [w.address]), ["address"]);
+  await api("/api/beneficiaries", { ngoId, label, dump: tree.dump() });
+  await (await ctx.vaultAs(partner).attestBatch(tree.root, ngoId, count)).wait();
+  return { root: tree.root, tree, wallets };
+}
+
+/// A beneficiary confirms delivery: their card signs Delivery{payoutId} (EIP-712). The card key never
+/// goes on-chain, so a used card can't be replayed or front-run; anyone may submit the signature.
+export async function confirmWithCard(ctx, batch, card, payoutId, submitter = "fieldWorker") {
+  const domain = { name: "GlassVault", version: "1", chainId: ctx.depA.chainId, verifyingContract: ctx.depA.GlassVault.address };
+  const sig = await card.signTypedData(domain, DELIVERY_TYPES, { payoutId });
+  return (await ctx.vaultAs(submitter).confirmDelivery(payoutId, sig, batch.tree.getProof([card.address]))).wait();
 }
 
 /// Moves local chain time forward (Hardhat dev RPC) so challenge windows can elapse in scripts.

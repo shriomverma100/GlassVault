@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { WebSocketServer } from "ws";
@@ -123,18 +122,29 @@ app.post("/api/invoices/:id/status", (req, res) => {
 
 // ─────────────── beneficiaries: QR cards → Merkle root ───────────────
 
-/// Issues `count` QR-card secrets. Only commitments are stored; secrets are returned ONCE for printing.
+/// Publishes a beneficiary batch: a Merkle tree of QR-card ADDRESSES built by the card issuer (field
+/// partner) in the browser. Card keys are created and printed client-side; this server never generates,
+/// receives or stores them. The root only counts once a registered field partner attests it on-chain.
 app.post("/api/beneficiaries", (req, res) => {
-  const count = Math.min(Math.max(Number(req.body.count) || 0, 1), 1000);
-  const secrets = Array.from({ length: count }, () => ethers.hexlify(randomBytes(32)));
-  const commitments = secrets.map((s) => ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [s])));
-  const tree = StandardMerkleTree.of(commitments.map((c) => [c]), ["bytes32"]);
-  db.beneficiaryTrees[tree.root] = { root: tree.root, label: req.body.label ?? "", ngoId: req.body.ngoId ?? null, count, dump: tree.dump(), createdAt: Date.now() };
+  let tree;
+  try {
+    tree = StandardMerkleTree.load(req.body.dump);
+    tree.validate(); // root and every node must follow from the leaves
+  } catch {
+    return bad(res, "dump must be a StandardMerkleTree dump");
+  }
+  const leaves = [...tree.entries()].map(([, v]) => v);
+  if (JSON.stringify(req.body.dump?.leafEncoding) !== JSON.stringify(["address"])) return bad(res, 'leaf encoding must be ["address"]');
+  if (!leaves.length || leaves.length > 1000) return bad(res, "a batch holds 1–1000 cards");
+  if (!leaves.every(([a]) => ethers.isAddress(a))) return bad(res, "every leaf must be a card address");
+  if (db.beneficiaryTrees[tree.root]) return bad(res, "batch already published", 409);
+  const ngoId = req.body.ngoId === undefined || req.body.ngoId === null ? null : Number(req.body.ngoId);
+  db.beneficiaryTrees[tree.root] = { root: tree.root, label: String(req.body.label ?? "").slice(0, 120), ngoId, count: leaves.length, dump: tree.dump(), createdAt: Date.now() };
   save();
-  ok(res, { root: tree.root, count, cards: secrets.map((secret, i) => ({ n: i + 1, secret, commitment: commitments[i] })) });
+  ok(res, { root: tree.root, count: leaves.length });
 });
 
-/// Public tree (commitments only) — the field app computes Merkle proofs in the browser.
+/// Public tree (card addresses only) — the field app computes Merkle proofs in the browser.
 app.get("/api/beneficiaries/:root", (req, res) => {
   const t = db.beneficiaryTrees[req.params.root];
   return t ? ok(res, { root: t.root, count: t.count, label: t.label, dump: t.dump }) : bad(res, "unknown root", 404);

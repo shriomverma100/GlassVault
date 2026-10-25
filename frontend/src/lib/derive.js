@@ -103,6 +103,10 @@ export function eventSentence(ev, label, state) {
       return `Bridge delivered nonce ${a.nonce} as lot #${a.lotId}`;
     case "DonationSwapped":
       return `${label(a.donor)} swapped ${Number(BigInt(a.ethIn ?? 0)) / 1e18} ETH → ${rs(a.dinrOut)} on chain B for a donation`;
+    case "FieldPartnerRegistered":
+      return `${label(a.partner)} registered as an independent field partner`;
+    case "BatchAttested":
+      return `${label(a.partner)} vouched for ${a.cards} beneficiary cards for ${ngo(a.ngoId)}`;
     case "OffRampRegistered":
       return `${label(a.agent)} registered as a fiat payment agent`;
     case "FiatSettled":

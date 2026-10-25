@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { loadFixture, time } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, freshRoot } = require("./fixture");
+const { deployFixture, signInvoice, beneficiaryTree, Category, WINDOW, inr, freshRoot, batch, attest, signDelivery } = require("./fixture");
 
 const FR = { DuplicateFiatProof: 8, UnexplainedTransfer: 9 };
 const RATE = inr(200_000); // ₹2,00,000 per ETH
@@ -25,7 +25,7 @@ async function offRampPayout(amount = 20_000) {
   await f.vault.connect(f.donorA).donate(0, Category.Water, inr(50_000), deadline()); // lot 0
   const ben = beneficiaryTree(1, `fiat-${amount}-`);
   const { inv, sig } = await signInvoice(f.vault, agent, { vendor: agent.address, amount: inr(amount), invoiceNo: `PL-${amount}` });
-  await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(amount) }], ben.root, 1);
+  await f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(amount) }], await attest(f.vault, ben.root, 0, ben.wallets.length), 1);
   return { ...f, agent, ben, payoutId: 0 };
 }
 
@@ -87,7 +87,7 @@ describe("Multi-hop donation — swap → bridge (tag survives both hops)", () =
 describe("Off-chain fiat off-ramp — rupee payment proven or flagged", () => {
   it("final 30% waits for BOTH delivery proof and the agent's signed fiat settlement", async () => {
     const { vault, dinr, agent, ben, payoutId, fieldWorker } = await offRampPayout();
-    await vault.connect(fieldWorker).confirmDelivery(payoutId, ben.secrets[0], ben.proofFor(0));
+    await vault.connect(fieldWorker).confirmDelivery(payoutId, await ben.sign(vault, payoutId, 0), ben.proofFor(0));
     await time.increase(WINDOW);
     const start = await dinr.balanceOf(agent.address);
     await vault.release(payoutId);
@@ -107,7 +107,7 @@ describe("Off-chain fiat off-ramp — rupee payment proven or flagged", () => {
     const f = await offRampPayout();
     const { vault, agent, ngoAdmin } = f;
     const second = await signInvoice(vault, agent, { vendor: agent.address, amount: inr(10_000), invoiceNo: "PL-SECOND" });
-    await vault.connect(ngoAdmin).requestPayout(second.inv, second.sig, [{ lotId: 0, amount: inr(10_000) }], freshRoot(), 1);
+    await vault.connect(ngoAdmin).requestPayout(second.inv, second.sig, [{ lotId: 0, amount: inr(10_000) }], await batch(vault, 0, 1), 1);
     await time.increase(WINDOW);
     await vault.release(0);
     await vault.release(1);
@@ -153,7 +153,7 @@ describe("Off-chain fiat off-ramp — rupee payment proven or flagged", () => {
     const { vault, vendor, ngoAdmin, donorA } = f;
     await vault.connect(donorA).donate(0, Category.Water, inr(10_000), deadline());
     const { inv, sig } = await signInvoice(vault, vendor, { vendor: vendor.address, amount: inr(1_000) });
-    await vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1_000) }], freshRoot(), 1);
+    await vault.connect(ngoAdmin).requestPayout(inv, sig, [{ lotId: 0, amount: inr(1_000) }], await batch(vault, 0, 1), 1);
     await time.increase(WINDOW);
     await vault.release(0);
     const s = await signFiat(vault, vendor, { payoutId: 0, fiatAmount: inr(1_000) });

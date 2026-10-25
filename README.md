@@ -19,7 +19,7 @@ role is a funded wallet on the local chain and every action is a real signed tra
 
 | Command | What it does |
 |---|---|
-| `npm test` | 49 contract tests (happy path + every attack) |
+| `npm test` | 54 contract tests (happy path + every attack) |
 | `npm run benchmark` | 100 receipts, 30% fraudulent, against fresh contracts on an isolated chain |
 | `npm run attack` | Live red-team attack on the running chain (also available as buttons in Watchtower) |
 | `npm run e2e` / `npm run e2e:attack` | Headless browser tests that drive the real UI |
@@ -33,7 +33,7 @@ role is a funded wallet on the local chain and every action is a real signed tra
 | **① Inbound donation** | `donate()` creates a lot tagged with donor, NGO, category, deadline and source chain. Multi-hop donations — **ETH swapped to dINR on chain B, then bridged to chain A** (`sendDonationWithSwap`) — keep the original donor, asset and source chain; the swap and bridge hops are reconstructed from events alone. | Donate, Passport journey |
 | **② Escrow condition** | Category must match, shares must fit each lot's budget and add up to the invoice, lot must not be expired. A challenge window opens; after it, anyone can release 70%. No admin role exists. Missed deadline or a freeze → donors reclaim. | NGO console, Passport |
 | **③ Off-chain invoice proof** | Vendor signs the invoice fields (EIP-712). File hash on-chain, file stored by IPFS CID. A field-level **nullifier** `keccak(vendor, invoiceNo, date, amount)` is global across all NGOs, so a re-scanned invoice still collides. **Fiat off-ramp:** when money is spent at a local cash/bank-only vendor, a staked payment agent signs a `FiatSettlement` (amount, hashed bank UTR, hashed payee, date); a bank reference can settle only one payout. | Vendor portal, NGO pre-checks |
-| **④ Impact verification** | Beneficiaries hold QR cards with a secret. Only a Merkle root of commitments goes on-chain; delivery = Merkle proof + one-time delivery nullifier. The final 30% is paid only after enough deliveries — and, for off-ramp payouts, after the rupee payment is proven; donors receive a soulbound Proof-of-Impact token. | Field app, Passport |
+| **④ Impact verification** | An **independent, staked field partner** (never the NGO) creates beneficiary cards in its browser and attests the card list on-chain (`attestBatch`); an NGO can only pay out against an attested list. Each QR card holds a private key: at handover the card **signs** "delivered for payout #id" (EIP-712), so the key never goes on-chain and a signature can't be replayed for another payout. Only a Merkle root of card addresses goes on-chain — no names; delivery = Merkle proof of the signer + one-time delivery nullifier. The final 30% is paid only after enough deliveries — and, for off-ramp payouts, after the rupee payment is proven; donors receive a soulbound Proof-of-Impact token. | Field app, Passport |
 
 ## How fraud is caught (without a central auditor)
 
@@ -88,7 +88,8 @@ chain B :8546 ── DINR · BridgeGateway                     ├ relayer   —
 - **DEX rate is fixed** (local stand-in); production swaps through a real pool, which the tracer reads the same way.
 - **Local chains.** Two Hardhat nodes stand in for two real networks; demo roles use the public Hardhat dev mnemonic.
 - **Bridge relayer is one trusted key.** Replays are blocked on-chain; production would use a light client or Chainlink CCIP. A failed delivery has no refund path on the source chain yet.
-- **NGO-issued QR secrets.** The NGO generates beneficiary cards, so in theory it could confirm its own deliveries. In production cards come from an independent field partner.
+- **Field partner honesty.** Cards and card lists come from a staked field partner independent of the NGO, but a partner colluding with an NGO could still issue cards to fake beneficiaries. Production: several partners per region, random audits, and slashing the partner when a challenge on its payout is upheld.
+- **Repeat beneficiaries.** Each payout gets its own card list, so the same person's deliveries are not linkable across payouts unless a partner reuses a card. Full unlinkability with reusable cards needs zero-knowledge membership proofs (e.g. Semaphore).
 - **Sybil voting.** An NGO could donate to itself from another wallet to outvote donors on a challenge. Quorum makes it harder; a per-lot veto is the proper fix.
 - **Receipt photos in the benchmark are generated** (lighting, folds, stamps). The cryptographic checks don't depend on that, but the perceptual-hash threshold would need tuning on real phone photos.
 - **Files are stored locally** under real IPFS CIDs; pinning them to an IPFS node is a config change, not a code change.
