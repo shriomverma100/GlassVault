@@ -16,7 +16,7 @@ const Watchtower = lazy(() => import("./pages/Watchtower"));
 
 function Pages() {
   const location = useLocation();
-  const { state, config } = useApp();
+  const { state, config } = useApp("state", "config");
   if (!state || !config) {
     return <div className="grid h-[60vh] place-items-center text-[15px] text-ash">Connecting to the chain…</div>;
   }

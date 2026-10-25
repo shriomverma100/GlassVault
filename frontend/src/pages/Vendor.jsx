@@ -19,7 +19,7 @@ export default function Vendor() {
 }
 
 function Portal() {
-  const { state, address } = useApp();
+  const { state, address } = useApp("state", "address");
   const me = state.vendors.find((v) => sameAddr(v.address, address));
   const [invoices, reload] = useApiList(`/api/invoices?vendor=${address}`);
   const payouts = state.payouts.filter((p) => sameAddr(p.vendor, address));
@@ -29,8 +29,8 @@ function Portal() {
     <motion.div variants={stagger()} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="flex items-end justify-between gap-8 pt-10 pb-8">
         <div>
-          <span className="text-[12px] text-graphite">Vendor portal</span>
-          <h1 className="font-display text-[56px] leading-none font-light tracking-tight">Issue signed invoices</h1>
+          <span className="text-[13px] text-graphite">Vendor portal</span>
+          <h1 className="font-display text-[56px] leading-none font-normal tracking-tight">Issue signed invoices</h1>
           <div className="mt-3 flex items-center gap-2">
             {me?.registered ? <StatusBadge status="Active" label={`Registered · ${me.category}`} /> : <StatusBadge status={me ? "Fraud" : "Pending"} label={me ? "Stake slashed — deregistered" : "Not registered"} />}
             <HashText value={address} />
@@ -84,15 +84,15 @@ function Portal() {
 function Big({ label, value }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[12px] text-graphite">{label}</span>
-      <span className="font-display text-[40px] leading-none font-light tabular">{value}</span>
+      <span className="text-[13px] text-graphite">{label}</span>
+      <span className="font-display text-[40px] leading-none font-normal tabular">{value}</span>
     </div>
   );
 }
 
 /// Stake + register. The stake is what a fake vendor loses when donors uphold a challenge.
 function Register() {
-  const { c, tx } = useApp();
+  const { c, tx } = useApp("c", "tx");
   const [cat, setCat] = useState("Water");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -128,10 +128,10 @@ function Register() {
 }
 
 function IssueInvoice({ vendor, onIssued }) {
-  const { state, chain, signer, address, toast } = useApp();
+  const { state, chain, signer, address, toast } = useApp("state", "chain", "signer", "address", "toast");
   const [ngoId, setNgoId] = useState(state.ngos.find((n) => !n.frozen)?.id ?? 0);
   const [invoiceNo, setInvoiceNo] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState([{ qty: "1", name: "", price: "" }]);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -193,7 +193,7 @@ function IssueInvoice({ vendor, onIssued }) {
             </Field>
           </div>
           <div>
-            <div className="mb-2 flex items-center justify-between text-[12px] text-graphite">
+            <div className="mb-2 flex items-center justify-between text-[13px] text-graphite">
               <span>Line items</span>
               <span className="flex items-center gap-1.5">
                 <CategoryIcon category={vendor.category} size={14} /> {vendor.category} (locked)
@@ -215,7 +215,7 @@ function IssueInvoice({ vendor, onIssued }) {
               <Button variant="ghost" className="h-9 px-4" onClick={() => setItems((xs) => [...xs, { qty: "1", name: "", price: "" }])}>
                 Add line
               </Button>
-              <span className="font-display text-[28px] font-light">
+              <span className="font-display text-[28px] font-normal">
                 <Rupees value={total} />
               </span>
             </div>
@@ -226,7 +226,7 @@ function IssueInvoice({ vendor, onIssued }) {
             </IconOrb>
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-medium">{file ? file.name : "Attach receipt photo or PDF"}</div>
-              <div className="text-[12px] text-graphite">{file ? <>CID <span className="font-mono">{file.cid.slice(0, 18)}…</span></> : "Stored content-addressed; its hash is what you sign"}</div>
+              <div className="text-[13px] text-graphite">{file ? <>CID <span className="font-mono">{file.cid.slice(0, 18)}…</span></> : "Stored content-addressed; its hash is what you sign"}</div>
             </div>
             <input type="file" accept="image/*,application/pdf" className="hidden" onChange={onFile} />
           </label>
@@ -234,7 +234,7 @@ function IssueInvoice({ vendor, onIssued }) {
 
         <Card className="col-span-5 flex flex-col p-6">
           <div className="text-[14px] font-medium">You are signing (EIP-712)</div>
-          <div className="mt-1 text-[12px] text-graphite">Any change to these fields after signing breaks the signature on-chain.</div>
+          <div className="mt-1 text-[13px] text-graphite">Any change to these fields after signing breaks the signature on-chain.</div>
           <div className="mt-4">
             <KV k="vendor"><HashText value={address} /></KV>
             <KV k="ngoId">{ngoId}</KV>

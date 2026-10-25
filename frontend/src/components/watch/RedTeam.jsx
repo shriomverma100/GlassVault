@@ -26,7 +26,7 @@ const KIND_LABEL = {
 
 /// Live red-team attack on the dashboard chain + the isolated 100-receipt benchmark.
 export default function RedTeam() {
-  const { benchmark, setBenchmark, toast } = useApp();
+  const { benchmark, setBenchmark, toast } = useApp("benchmark", "setBenchmark", "toast");
   const [running, setRunning] = useState(null);
   const [notes, setNotes] = useState({});
 
@@ -59,7 +59,7 @@ export default function RedTeam() {
     <Section eyebrow="Adversarial · real transactions · nothing scripted on the detection side" title="Red team">
       <div className="grid grid-cols-[1fr_1fr] gap-8">
         <div>
-          <div className="mb-3 text-[12px] text-graphite">Live attack — Shadow Trust tries to steal</div>
+          <div className="mb-3 text-[13px] text-graphite">Live attack — Shadow Trust tries to steal</div>
           <ol className="relative flex flex-col">
             {STEPS.map((s, i) => {
               const note = notes[s.key];
@@ -96,7 +96,7 @@ export default function RedTeam() {
 
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <div className="text-[12px] text-graphite">100 receipts · 30% fraudulent · fresh contracts on an isolated chain</div>
+            <div className="text-[13px] text-graphite">100 receipts · 30% fraudulent · fresh contracts on an isolated chain</div>
             <Button variant="signal" disabled={benchmark?.status === "running"} onClick={runBenchmark}>
               {benchmark?.status === "running" ? <Spinner /> : <BeakerIcon width={16} height={16} />}
               {benchmark?.status === "running" ? "Running…" : "Run 100-receipt benchmark"}
@@ -117,8 +117,8 @@ export default function RedTeam() {
                     ["TN", report.trueNegatives, true],
                   ].map(([k, v, good]) => (
                     <div key={k} className={`py-3 ${good ? "" : v ? "hatch bg-obsidian text-white" : ""}`}>
-                      <div className="text-[11px] opacity-60">{k}</div>
-                      <div className="font-display text-[22px] font-light tabular">{v}</div>
+                      <div className="text-[13px] font-medium opacity-80">{k}</div>
+                      <div className="font-display text-[22px] font-normal tabular">{v}</div>
                     </div>
                   ))}
                 </div>
@@ -130,7 +130,7 @@ export default function RedTeam() {
                       <div key={k} className="flex items-center justify-between gap-4 px-5 py-3 text-[13px]">
                         <div className="min-w-0">
                           <div className="font-medium">{KIND_LABEL[k] ?? k}</div>
-                          <div className="truncate text-[12px] text-graphite">{genuine ? "must pass untouched" : Object.entries(v.by).map(([b, n]) => `${b} ×${n}`).join(", ")}</div>
+                          <div className="truncate text-[13px] text-graphite">{genuine ? "must pass untouched" : Object.entries(v.by).map(([b, n]) => `${b} ×${n}`).join(", ")}</div>
                         </div>
                         <span className={`inline-flex h-7 shrink-0 items-center rounded-full px-3 font-medium tabular ${good ? "bg-signal" : "hatch bg-obsidian text-white"}`}>
                           {genuine ? `${v.total - v.caught}/${v.total} passed` : `${v.caught}/${v.total} caught`}
@@ -143,7 +143,7 @@ export default function RedTeam() {
                     <span className={`inline-flex h-7 items-center rounded-full px-3 font-medium ${report.freezeAfterTwoFrauds ? "bg-signal" : "hatch bg-obsidian text-white"}`}>{report.freezeAfterTwoFrauds ? "yes" : "no"}</span>
                   </div>
                 </div>
-                <div className="border-t border-hairline px-5 py-3 text-[12px] text-graphite">Ran in {report.seconds.toFixed(1)}s · real EVM execution of the deployed contract code</div>
+                <div className="border-t border-hairline px-5 py-3 text-[13px] text-graphite">Ran in {report.seconds.toFixed(1)}s · real EVM execution of the deployed contract code</div>
               </motion.div>
             ) : (
               <motion.div key="e" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid min-h-[260px] place-items-center rounded-[var(--radius-tile)] border border-dashed border-hairline p-8 text-center text-[14px] text-graphite">
@@ -164,12 +164,12 @@ export default function RedTeam() {
 function Big({ label, value, unit, sub }) {
   return (
     <div className="px-5 py-5">
-      <div className="text-[12px] text-graphite">{label}</div>
-      <div className="font-display text-[56px] leading-none font-light tabular">
+      <div className="text-[13px] text-graphite">{label}</div>
+      <div className="font-display text-[56px] leading-none font-normal tabular">
         {value}
         <span className="ml-1 text-[20px] text-graphite">{unit}</span>
       </div>
-      <div className="mt-1 text-[12px] text-graphite">{sub}</div>
+      <div className="mt-1 text-[13px] text-graphite">{sub}</div>
     </div>
   );
 }

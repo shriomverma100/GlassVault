@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ethers } from "ethers";
-import { useApp, useTick } from "../../lib/store";
+import { useApp, useRerenderAt, payoutBoundaries } from "../../lib/store";
 import { Button, Countdown, Empty, HashText, Input, Rupees, Section, StatusBadge } from "../ui/kit";
 import { CategoryIcon, GavelIcon } from "../icons";
 import { liquid } from "../../lib/motion";
@@ -9,8 +9,8 @@ import { ipfsHref, LinkIcon } from "./shared";
 
 /// Challenge court: open windows anyone can dispute, live donor votes, and resolution.
 export default function Court() {
-  useTick();
-  const { state, chainNow } = useApp();
+  const { state, chainNow } = useApp("state", "chainNow");
+  useRerenderAt(payoutBoundaries(state.payouts));
   const now = chainNow();
   const open = state.payouts.filter((p) => p.status === "Pending" && p.releaseAt > now && !state.ngos[p.ngoId]?.frozen);
   const disputed = state.payouts.filter((p) => p.challenge).sort((a, b) => Number(a.challenge.resolved) - Number(b.challenge.resolved) || b.id - a.id);
@@ -19,7 +19,7 @@ export default function Court() {
     <Section eyebrow="No auditor · donors decide · bonds at stake" title="Challenge court">
       <div className="grid grid-cols-[1fr_1.4fr] gap-8">
         <div>
-          <div className="mb-3 text-[12px] text-graphite">Open challenge windows</div>
+          <div className="mb-3 text-[13px] text-graphite">Open challenge windows</div>
           {!open.length ? (
             <Empty>No payout is inside its challenge window right now.</Empty>
           ) : (
@@ -31,7 +31,7 @@ export default function Court() {
           )}
         </div>
         <div>
-          <div className="mb-3 text-[12px] text-graphite">Disputes</div>
+          <div className="mb-3 text-[13px] text-graphite">Disputes</div>
           {!disputed.length ? (
             <Empty>No payout has been challenged yet.</Empty>
           ) : (
@@ -48,7 +48,7 @@ export default function Court() {
 }
 
 function OpenPayout({ p }) {
-  const { state, c, tx, address } = useApp();
+  const { state, c, tx, address } = useApp("state", "c", "tx", "address");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -85,8 +85,8 @@ function OpenPayout({ p }) {
           </div>
         </div>
         <div className="text-right">
-          <div className="text-[12px] text-graphite">window closes in</div>
-          <div className="font-display text-[22px] font-light">
+          <div className="text-[13px] text-graphite">window closes in</div>
+          <div className="font-display text-[22px] font-normal">
             <Countdown until={p.releaseAt} done="closed" />
           </div>
         </div>
@@ -103,7 +103,7 @@ function OpenPayout({ p }) {
 }
 
 function Dispute({ p }) {
-  const { state, c, tx, address, chainNow } = useApp();
+  const { state, c, tx, address, chainNow } = useApp("state", "c", "tx", "address", "chainNow");
   const ch = p.challenge;
   const [voted, setVoted] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -155,8 +155,8 @@ function Dispute({ p }) {
           <StatusBadge status={ch.upheld ? "Fraud" : "Active"} label={ch.upheld ? "Upheld · slashed" : "Rejected · resumed"} />
         ) : votingOpen ? (
           <div className="text-right">
-            <div className="text-[12px] text-graphite">voting ends in</div>
-            <div className="font-display text-[22px] font-light">
+            <div className="text-[13px] text-graphite">voting ends in</div>
+            <div className="font-display text-[22px] font-normal">
               <Countdown until={ch.voteEnd} />
             </div>
           </div>
@@ -174,7 +174,7 @@ function Dispute({ p }) {
         <div className="relative h-0">
           <span className={`absolute -top-3.5 h-5 w-px ${ch.resolved && ch.upheld ? "bg-white" : "bg-obsidian"}`} style={{ left: pct(quorum) }} />
         </div>
-        <div className={`mt-2 flex justify-between text-[12px] ${ch.resolved && ch.upheld ? "text-white/70" : "text-graphite"}`}>
+        <div className={`mt-2 flex justify-between text-[13px] ${ch.resolved && ch.upheld ? "text-white/70" : "text-graphite"}`}>
           <span>
             Uphold <Rupees value={ch.votesUphold} />
           </span>

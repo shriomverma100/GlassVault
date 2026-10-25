@@ -25,7 +25,7 @@ const LEGEND = [
 
 /// Live fund flow: donor → NGO → category → vendor (and what still sits in escrow or went back to donors).
 export default function SankeyFlow({ height = 420 }) {
-  const { state, config } = useApp();
+  const { state, config } = useApp("state", "config");
   const [flow, setFlow] = useState(null);
   const [width, setWidth] = useState(1200);
   const [hover, setHover] = useState(null);

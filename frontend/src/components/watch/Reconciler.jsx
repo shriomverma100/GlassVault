@@ -11,7 +11,7 @@ const select = "h-11 rounded-[var(--radius-input)] border border-hairline bg-whi
 
 /// Compares what an NGO publishes to donors against what the chain recorded.
 export default function Reconciler() {
-  const { state, config, toast } = useApp();
+  const { state, config, toast } = useApp("state", "config", "toast");
   const [ngoId, setNgoId] = useState("0");
   const [cats, setCats] = useState([{ category: "Water", spent: "" }]);
   const [rows, setRows] = useState([{ donor: "", payoutId: "", amount: "" }]);
@@ -79,7 +79,7 @@ export default function Reconciler() {
           </Field>
 
           <div>
-            <div className="mb-2 text-[12px] text-graphite">"We spent…" — category claims</div>
+            <div className="mb-2 text-[13px] text-graphite">"We spent…" — category claims</div>
             <div className="flex flex-col gap-2">
               {cats.map((c, i) => (
                 <div key={i} className="grid grid-cols-[160px_1fr] gap-2">
@@ -98,7 +98,7 @@ export default function Reconciler() {
           </div>
 
           <div>
-            <div className="mb-2 text-[12px] text-graphite">"Your money funded…" — per-donor impact reports</div>
+            <div className="mb-2 text-[13px] text-graphite">"Your money funded…" — per-donor impact reports</div>
             <div className="flex flex-col gap-2">
               {rows.map((r, i) => (
                 <div key={i} className="grid grid-cols-[1fr_1fr_130px] gap-2">
@@ -138,12 +138,12 @@ export default function Reconciler() {
               <motion.div key="res" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={liquid} className="rounded-[var(--radius-tile)] border border-hairline bg-white">
                 <div className={`flex items-center justify-between rounded-t-[var(--radius-tile)] px-6 py-5 ${result.verdict === "consistent" ? "bg-signal" : "hatch bg-obsidian text-white"}`}>
                   <div>
-                    <div className="text-[12px] opacity-70">Verdict</div>
-                    <div className="font-display text-[28px] font-light capitalize">{result.verdict}</div>
+                    <div className="text-[13px] font-medium opacity-80">Verdict</div>
+                    <div className="font-display text-[28px] font-normal capitalize">{result.verdict}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[12px] opacity-70">Problems</div>
-                    <div className="font-display text-[28px] font-light">{result.problems}</div>
+                    <div className="text-[13px] font-medium opacity-80">Problems</div>
+                    <div className="font-display text-[28px] font-normal">{result.problems}</div>
                   </div>
                 </div>
                 <div className="divide-y divide-hairline">
@@ -154,11 +154,11 @@ export default function Reconciler() {
                         <div className="min-w-0">
                           <div className="text-[14px] font-medium">{l.label}</div>
                           {l.detail && <div className="mt-0.5 text-[13px] text-ash">{l.detail}</div>}
-                          <div className="mt-1 text-[12px] text-graphite">
+                          <div className="mt-1 text-[13px] text-graphite">
                             claimed <Rupees value={l.claimed} /> · on-chain <Rupees value={l.onChain} />
                           </div>
                         </div>
-                        <span className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium ${okLine ? "bg-signal text-obsidian" : "hatch bg-obsidian text-white"}`}>
+                        <span className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium ${okLine ? "bg-signal text-obsidian" : "hatch bg-obsidian text-white"}`}>
                           {okLine ? <CheckIcon size={14} /> : <CrossIcon size={14} />}
                           {l.status}
                         </span>

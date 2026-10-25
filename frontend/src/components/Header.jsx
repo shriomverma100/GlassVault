@@ -63,7 +63,7 @@ export default function Header() {
 
 /// Acting identity. Each role is a real funded account on the local chains; all actions are signed txs.
 function RoleSwitcher() {
-  const { role, switchRole, config, address } = useApp();
+  const { role, switchRole, config, address } = useApp("role", "switchRole", "config", "address");
   const [open, setOpen] = useState(false);
   const meta = ROLE_META[role];
   const groups = ["Donor", "NGO", "Vendor", "Field", "Watcher"];
@@ -79,7 +79,7 @@ function RoleSwitcher() {
         <WalletIcon />
         <span className="flex flex-col items-start leading-tight">
           <span>{meta?.label}</span>
-          <span className="font-mono text-[11px] opacity-70">{short(address ?? "", 4)}</span>
+          <span className="font-mono text-[12px] opacity-70">{short(address ?? "", 4)}</span>
         </span>
       </motion.button>
       <AnimatePresence>
@@ -91,7 +91,7 @@ function RoleSwitcher() {
             transition={liquid}
             className="absolute top-14 right-0 z-50 w-[300px] rounded-[var(--radius-tile)] border border-hairline bg-paper p-2"
           >
-            <div className="px-3 py-2 text-[12px] text-graphite">Act as — every role is a real wallet on the local chain</div>
+            <div className="px-3 py-2 text-[13px] text-graphite">Act as — every role is a real wallet on the local chain</div>
             {groups.map((g) => (
               <div key={g} className="border-t border-hairline py-1">
                 {Object.entries(ROLE_META)
@@ -108,7 +108,7 @@ function RoleSwitcher() {
                       <span>
                         {m.label} <span className="text-graphite">· {m.kind}</span>
                       </span>
-                      <span className="font-mono text-[11px] text-graphite">{short(config.roles[r]?.address ?? "", 3)}</span>
+                      <span className="font-mono text-[12px] text-graphite">{short(config.roles[r]?.address ?? "", 3)}</span>
                     </button>
                   ))}
               </div>

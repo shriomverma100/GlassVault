@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ethers } from "ethers";
-import { useApp, useTick } from "../lib/store";
+import { useApp, useRerenderAt, payoutBoundaries } from "../lib/store";
 import { api, ipfsUrl } from "../lib/api";
 import { labeler, lotPayouts, lotSpent, lotSpine, eventSentence, eventTone } from "../lib/derive";
 import { fadeUp, liquid, stagger } from "../lib/motion";
@@ -19,7 +19,7 @@ export default function Passport() {
 // ───────────────────────── list ─────────────────────────
 
 function LotList() {
-  const { state, address, config } = useApp();
+  const { state, address, config } = useApp("state", "address", "config");
   const mine = state.lots.filter((l) => l.donor.toLowerCase() === address?.toLowerCase());
   const [scope, setScope] = useState(mine.length ? "mine" : "all");
   const label = useMemo(() => labeler(config), [config]);
@@ -29,8 +29,8 @@ function LotList() {
     <motion.div variants={stagger(0.06)} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="flex flex-wrap items-end justify-between gap-6 pt-10 pb-8">
         <div>
-          <span className="text-[12px] text-graphite">Donation passports</span>
-          <h1 className="font-display text-[64px] leading-[0.95] font-light tracking-tight">Follow every rupee</h1>
+          <span className="text-[13px] text-graphite">Donation passports</span>
+          <h1 className="font-display text-[64px] leading-[0.95] font-normal tracking-tight">Follow every rupee</h1>
         </div>
         <Segmented
           id="scope"
@@ -60,21 +60,21 @@ function LotList() {
                     <CategoryIcon category={l.category} />
                   </IconOrb>
                   <div>
-                    <div className="text-[12px] text-graphite">
+                    <div className="text-[13px] text-graphite">
                       Lot #{l.id} · {label(l.donor)}
                       {l.sourceChain !== config.chainA.chainId && " · bridged"}
                     </div>
-                    <div className="font-display text-[22px] font-light">
+                    <div className="font-display text-[22px] font-normal">
                       {l.category} · {ngo?.name}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[12px] text-graphite">Donated</div>
-                    <Rupees value={l.amount} className="font-display text-[22px] font-light" />
+                    <div className="text-[13px] text-graphite">Donated</div>
+                    <Rupees value={l.amount} className="font-display text-[22px] font-normal" />
                   </div>
                   <div>
-                    <div className="text-[12px] text-graphite">Still in escrow</div>
-                    <Rupees value={l.remaining} className="font-display text-[22px] font-light" />
+                    <div className="text-[13px] text-graphite">Still in escrow</div>
+                    <Rupees value={l.remaining} className="font-display text-[22px] font-normal" />
                   </div>
                   <MiniSpine statuses={spine} />
                 </motion.div>
@@ -107,8 +107,8 @@ function MiniSpine({ statuses }) {
 // ───────────────────────── detail ─────────────────────────
 
 function LotDetail({ lotId }) {
-  const { state, config, address, c, tx, chainNow } = useApp();
-  useTick();
+  const { state, config, address, c, tx, chainNow } = useApp("state", "config", "address", "c", "tx", "chainNow");
+  useRerenderAt([...payoutBoundaries(state.payouts), state.lots[Number(lotId)]?.deadline]);
   const label = useMemo(() => labeler(config), [config]);
   const [passport, setPassport] = useState(null);
   const [votes, setVotes] = useState({});
@@ -200,16 +200,16 @@ function LotDetail({ lotId }) {
             <CategoryIcon category={lot.category} size={28} />
           </IconOrb>
           <div>
-            <Link to="/passport" className="text-[12px] text-graphite hover:text-obsidian">
+            <Link to="/passport" className="text-[13px] text-graphite hover:text-obsidian">
               ← All passports
             </Link>
-            <h1 className="font-display text-[56px] leading-[0.95] font-light tracking-tight">
+            <h1 className="font-display text-[56px] leading-[0.95] font-normal tracking-tight">
               Donation #{lot.id}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[14px] text-ash">
               <span>{lot.category}</span>·<span>{ngo.name}</span>·<span>by {label(lot.donor)}</span>
               {bridged && (
-                <span className="ml-2 inline-flex h-7 items-center gap-1.5 rounded-full border border-hairline bg-white px-3 text-[12px]">
+                <span className="ml-2 inline-flex h-7 items-center gap-1.5 rounded-full border border-hairline bg-white px-3 text-[13px]">
                   <BridgeIcon size={14} /> chain {lot.sourceChain} → {config.chainA.chainId}
                 </span>
               )}
@@ -277,7 +277,7 @@ function LotDetail({ lotId }) {
                   )}
                   <div>
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="font-display text-[24px] font-light">
+                      <span className="font-display text-[24px] font-normal">
                         <Rupees value={p.share} />
                       </span>
                       <span className="text-[13px] text-graphite">
@@ -304,7 +304,7 @@ function LotDetail({ lotId }) {
                         </div>
                         <VoteBar uphold={ch.votesUphold} reject={ch.votesReject} total={p.amount} />
                         {ch.evidenceURI && (
-                          <a className="mt-2 inline-block font-mono text-[12px] text-ash underline" href={ch.evidenceURI.replace("ipfs://", "/ipfs/")} target="_blank" rel="noreferrer">
+                          <a className="mt-2 inline-block font-mono text-[13px] text-ash underline" href={ch.evidenceURI.replace("ipfs://", "/ipfs/")} target="_blank" rel="noreferrer">
                             evidence {ch.evidenceURI.slice(0, 22)}…
                           </a>
                         )}
@@ -356,7 +356,7 @@ function LotDetail({ lotId }) {
                   <VaultIcon size={24} />
                 </div>
                 <div>
-                  <span className="font-display text-[24px] font-light">
+                  <span className="font-display text-[24px] font-normal">
                     <Rupees value={lot.remaining} />
                   </span>
                   <span className="ml-3 text-[14px] text-ash">{ngo.frozen ? "locked · reclaimable by you" : "still in escrow, untouched"}</span>
@@ -375,7 +375,7 @@ function LotDetail({ lotId }) {
 
       <Drawer open={mathOpen} onClose={() => setMathOpen(false)} title={`The math · lot #${lot.id}`}>
         <div className="mb-6">
-          <div className="mb-2 text-[12px] text-graphite">Lot</div>
+          <div className="mb-2 text-[13px] text-graphite">Lot</div>
           <KV k="Lot id">{lot.id}</KV>
           <KV k="Donor">
             <HashText value={lot.donor} />
@@ -386,7 +386,7 @@ function LotDetail({ lotId }) {
         </div>
         {payouts.map((p) => (
           <div key={p.id} className="mb-6">
-            <div className="mb-2 text-[12px] text-graphite">Payout #{p.id}</div>
+            <div className="mb-2 text-[13px] text-graphite">Payout #{p.id}</div>
             <KV k="Invoice nullifier">
               <HashText value={p.nullifier} n={6} />
             </KV>
@@ -417,7 +417,7 @@ function LotDetail({ lotId }) {
           </div>
         ))}
         <div>
-          <div className="mb-2 text-[12px] text-graphite">Transactions</div>
+          <div className="mb-2 text-[13px] text-graphite">Transactions</div>
           {(passport?.trail ?? []).map((e) => (
             <KV key={e.id} k={e.name}>
               <HashText value={e.tx} n={6} />
@@ -432,8 +432,8 @@ function LotDetail({ lotId }) {
 function Detail({ title, sub, extra }) {
   return (
     <Card className="p-4 text-center">
-      <div className="font-display text-[22px] leading-tight font-light">{title}</div>
-      <div className="mt-1 text-[12px] text-graphite">
+      <div className="font-display text-[22px] leading-tight font-normal">{title}</div>
+      <div className="mt-1 text-[13px] text-graphite">
         {sub}
         {extra}
       </div>
@@ -444,8 +444,8 @@ function Detail({ title, sub, extra }) {
 function Big({ k, v }) {
   return (
     <div>
-      <div className="text-[12px] text-graphite">{k}</div>
-      <Rupees value={v} className="font-display text-[32px] leading-none font-light" />
+      <div className="text-[13px] text-graphite">{k}</div>
+      <Rupees value={v} className="font-display text-[32px] leading-none font-normal" />
     </div>
   );
 }
@@ -460,7 +460,7 @@ function VoteBar({ uphold, reject, total }) {
         <motion.div className="h-full bg-signal" initial={{ width: 0 }} animate={{ width: `${pr}%` }} transition={liquid} />
         <span className="absolute top-0 left-1/2 h-full w-px bg-obsidian" title="Quorum: half of the payout's funding" />
       </div>
-      <div className="mt-1.5 flex justify-between text-[12px] text-graphite">
+      <div className="mt-1.5 flex justify-between text-[13px] text-graphite">
         <span>
           Uphold <Rupees value={uphold} />
         </span>
@@ -483,7 +483,7 @@ function Trail({ events, label, state }) {
           <motion.li key={e.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ ...liquid, delay: 0.03 * i }} className="relative pb-5 pl-6 last:pb-0">
             <span className={`absolute top-1.5 -left-[6px] h-[11px] w-[11px] rounded-full ${tone === "bad" ? "hatch bg-obsidian" : tone === "good" ? "bg-signal ring-1 ring-signal-deep" : "border border-hairline bg-white"}`} />
             <div className="text-[14px]">{eventSentence(e, label, state)}</div>
-            <div className="mt-0.5 flex gap-3 text-[12px] text-graphite">
+            <div className="mt-0.5 flex gap-3 text-[13px] text-graphite">
               <span>{new Date(e.time * 1000).toLocaleString("en-IN")}</span>
               <span>block {e.block}</span>
               <HashText value={e.tx} />

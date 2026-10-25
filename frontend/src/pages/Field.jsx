@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ethers } from "ethers";
 import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
@@ -14,7 +14,7 @@ import { ProgressRing } from "../components/ops/shared";
 const coder = ethers.AbiCoder.defaultAbiCoder();
 
 export default function Field() {
-  const { state, role } = useApp();
+  const { state, role } = useApp("state", "role");
   const open = state.payouts.filter((p) => ["Pending", "Released"].includes(p.status) && p.deliveries < p.deliveriesRequired && !state.ngos[p.ngoId]?.frozen);
   const [payoutId, setPayoutId] = useState(open[0]?.id ?? null);
   const payout = state.payouts.find((p) => p.id === payoutId);
@@ -22,13 +22,13 @@ export default function Field() {
   return (
     <motion.div variants={stagger()} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="pt-10 pb-8">
-        <span className="text-[12px] text-graphite">④ Cryptographic impact verification</span>
-        <h1 className="font-display text-[56px] leading-none font-light tracking-tight">Field delivery</h1>
+        <span className="text-[13px] text-graphite">④ Cryptographic impact verification</span>
+        <h1 className="font-display text-[56px] leading-none font-normal tracking-tight">Field delivery</h1>
         <p className="mt-3 max-w-[640px] text-[14px] text-ash">
           Scan a beneficiary's QR card at handover. The chain checks the card against the NGO's Merkle root and burns a delivery nullifier — the person's identity
           never leaves the card.
         </p>
-        {role !== "fieldWorker" && <div className="mt-3 text-[12px] text-graphite">Tip: switch role to Field worker. Any wallet can confirm, the card secret is the proof.</div>}
+        {role !== "fieldWorker" && <div className="mt-3 text-[13px] text-graphite">Tip: switch role to Field worker. Any wallet can confirm, the card secret is the proof.</div>}
       </motion.section>
 
       <motion.div variants={fadeUp}>
@@ -73,7 +73,7 @@ export default function Field() {
 }
 
 function Confirm({ payout }) {
-  const { c, tx, toast } = useApp();
+  const { c, tx, toast } = useApp("c", "tx", "toast");
   const [tree, setTree] = useState(null);
   const [treeError, setTreeError] = useState(null);
   const [secret, setSecret] = useState("");
@@ -148,7 +148,7 @@ function Confirm({ payout }) {
                     <span className="grid h-12 w-12 place-items-center rounded-full bg-signal">
                       <CheckIcon size={24} />
                     </span>
-                    <span className="font-display text-[32px] font-light">Delivery proven</span>
+                    <span className="font-display text-[32px] font-normal">Delivery proven</span>
                   </div>
                   <p className="mt-3 text-[14px] text-ash">
                     {done.impact ? "All confirmations in — the contract paid the final 30% and minted Proof-of-Impact tokens to the donors." : `${done.required - done.deliveries} more card(s) to go before the final 30% unlocks.`}
@@ -156,13 +156,13 @@ function Confirm({ payout }) {
                 </motion.div>
               ) : (
                 <motion.div key="check" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={liquid}>
-                  <div className="text-[12px] text-graphite">Payout #{payout.id} · root</div>
+                  <div className="text-[13px] text-graphite">Payout #{payout.id} · root</div>
                   <HashText value={payout.beneficiaryRoot} n={8} />
                   {check ? (
                     <div className={`mt-4 rounded-[var(--radius-tile)] border p-4 text-[14px] ${check.ok ? "border-signal-deep bg-signal-mist" : "hatch border-obsidian bg-white"}`}>
                       {check.msg}
                       {check.commitment && (
-                        <div className="mt-1 text-[12px] text-graphite">
+                        <div className="mt-1 text-[13px] text-graphite">
                           commitment <HashText value={check.commitment} /> · proof {check.proof.length} hashes
                         </div>
                       )}
@@ -185,7 +185,7 @@ function Confirm({ payout }) {
 
 /// Camera QR scanner. Stops itself after the first successful read.
 function Scanner({ onSecret }) {
-  const id = useRef(`qr-${Math.random().toString(36).slice(2)}`);
+  const id = `qr-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const qr = useRef(null);
   const [on, setOn] = useState(false);
   const [err, setErr] = useState(null);
@@ -204,7 +204,7 @@ function Scanner({ onSecret }) {
   async function start() {
     setErr(null);
     try {
-      qr.current ??= new Html5Qrcode(id.current, { verbose: false });
+      qr.current ??= new Html5Qrcode(id, { verbose: false });
       setOn(true);
       await qr.current.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, (text) => {
         onSecret(text.trim());
@@ -219,7 +219,7 @@ function Scanner({ onSecret }) {
   return (
     <div>
       <div className="relative aspect-square overflow-hidden rounded-[var(--radius-tile)] border border-hairline bg-white">
-        <div id={id.current} className="h-full w-full" />
+        <div id={id} className="h-full w-full" />
         {!on && (
           <div className="absolute inset-0 grid place-items-center">
             <div className="flex flex-col items-center gap-3 text-center">

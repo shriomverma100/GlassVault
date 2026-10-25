@@ -1,22 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { liquid, snappy } from "../../lib/motion";
 import { useApp, useTick } from "../../lib/store";
 import { short } from "../../lib/chain";
+import { inr } from "../../lib/format";
 import { CheckIcon, CrossIcon, GavelIcon, HourglassIcon, SnowLockIcon } from "../icons";
 
-const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
-
-/// ₹ amount, Indian digit grouping.
+/// ₹ amount, Indian digit grouping (see lib/format for the one money convention).
 export function Rupees({ value, className = "" }) {
-  return <span className={`tabular ${className}`}>₹{inr.format(value ?? 0)}</span>;
-}
-
-/// Compact lakh/crore display for KPIs: 48,20,000 → "48.2" + "L".
-export function compactInr(v) {
-  if (v >= 1e7) return [(v / 1e7).toFixed(2), "Cr ₹"];
-  if (v >= 1e5) return [(v / 1e5).toFixed(1), "L ₹"];
-  return [inr.format(v), "₹"];
+  return <span className={`tabular ${className}`}>{inr(value)}</span>;
 }
 
 export function Button({ children, variant = "primary", className = "", disabled, ...rest }) {
@@ -43,9 +35,9 @@ export function Button({ children, variant = "primary", className = "", disabled
 export function Field({ label, hint, children }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[12px] text-graphite">{label}</span>
+      <span className="text-[13px] text-graphite">{label}</span>
       {children}
-      {hint && <span className="text-[12px] text-graphite">{hint}</span>}
+      {hint && <span className="text-[13px] text-graphite">{hint}</span>}
     </label>
   );
 }
@@ -93,8 +85,8 @@ export function Section({ eyebrow, title, action, children, className = "" }) {
       {(eyebrow || title || action) && (
         <div className="mb-6 flex items-end justify-between gap-6">
           <div>
-            {eyebrow && <div className="text-[12px] text-graphite">{eyebrow}</div>}
-            {title && <h2 className="font-display text-[28px] leading-tight font-light">{title}</h2>}
+            {eyebrow && <div className="text-[13px] text-graphite">{eyebrow}</div>}
+            {title && <h2 className="font-display text-[28px] leading-tight font-normal">{title}</h2>}
           </div>
           {action}
         </div>
@@ -104,11 +96,12 @@ export function Section({ eyebrow, title, action, children, className = "" }) {
   );
 }
 
+// Plain element: cards never move (moving text blurs it); hover feedback is a border colour change.
 export function Card({ className = "", children, ...rest }) {
   return (
-    <motion.div transition={liquid} className={`rounded-[var(--radius-card)] border border-hairline bg-paper ${className}`} {...rest}>
+    <div className={`rounded-[var(--radius-card)] border border-hairline bg-paper transition-colors ${className}`} {...rest}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
@@ -127,7 +120,7 @@ const STATUS = {
 export function StatusBadge({ status, label }) {
   const s = STATUS[status] ?? { label: status, cls: "border border-hairline bg-white text-ash", icon: null };
   return (
-    <span className={`inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium whitespace-nowrap ${s.cls}`}>
+    <span className={`inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium whitespace-nowrap ${s.cls}`}>
       {s.icon}
       {label ?? s.label}
     </span>
@@ -157,7 +150,7 @@ export function HashText({ value, n = 4, className = "" }) {
 /// Seconds until a chain timestamp, using chain time.
 export function Countdown({ until, done = "now" }) {
   useTick();
-  const { chainNow } = useApp();
+  const { chainNow } = useApp("chainNow");
   const s = until - chainNow();
   if (s <= 0) return <span className="tabular">{done}</span>;
   const d = Math.floor(s / 86400);
@@ -173,6 +166,13 @@ export function Empty({ children }) {
 
 /// Right-side drawer ("see the math").
 export function Drawer({ open, onClose, title, children }) {
+  // Escape closes the panel, like any side sheet
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
   return (
     <AnimatePresence>
       {open && (
@@ -186,7 +186,7 @@ export function Drawer({ open, onClose, title, children }) {
             transition={liquid}
           >
             <div className="flex items-center justify-between border-b border-hairline px-6 py-5">
-              <h3 className="font-display text-[22px] font-light">{title}</h3>
+              <h3 className="font-display text-[22px] font-normal">{title}</h3>
               <Button variant="ghost" onClick={onClose} className="h-9 px-4">
                 Close
               </Button>
@@ -212,7 +212,7 @@ export function KV({ k, children }) {
 }
 
 export function Toasts() {
-  const { toasts } = useApp();
+  const { toasts } = useApp("toasts");
   return (
     <div className="pointer-events-none fixed right-6 bottom-6 z-[60] flex w-[360px] flex-col gap-2">
       <AnimatePresence>
@@ -239,7 +239,7 @@ export function Toasts() {
 
 /// Shown when the acting role can't do this page's action.
 export function RoleGate({ kinds, children }) {
-  const { role, config } = useApp();
+  const { role, config } = useApp("role", "config");
   const kind = config && role ? (role.startsWith("donor") ? "Donor" : role.startsWith("ngo") ? "NGO" : role.startsWith("vendor") ? "Vendor" : role === "fieldWorker" ? "Field" : "Watcher") : null;
   if (kinds.includes(kind)) return children;
   return <Empty>Switch role (top right) to {kinds.join(" / ")} to use this page.</Empty>;

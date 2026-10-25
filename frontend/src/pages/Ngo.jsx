@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useApp, useTick } from "../lib/store";
+import { useApp, useRerenderAt, payoutBoundaries } from "../lib/store";
 import { CATEGORIES } from "../lib/chain";
 import { fadeUp, stagger } from "../lib/motion";
 import { Button, Card, Countdown, Empty, Rupees, RoleGate, Section, Segmented, StatusBadge } from "../components/ui/kit";
@@ -18,7 +18,7 @@ export default function Ngo() {
 }
 
 function Console() {
-  const { state, address } = useApp();
+  const { state, address } = useApp("state", "address");
   const ngo = state.ngos.find((n) => sameAddr(n.admin, address));
   const [tab, setTab] = useState("inbox");
   const [selected, setSelected] = useState(null);
@@ -37,8 +37,8 @@ function Console() {
     <motion.div variants={stagger()} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="flex items-end justify-between gap-8 pt-10 pb-8">
         <div>
-          <span className="text-[12px] text-graphite">NGO console</span>
-          <h1 className="font-display text-[56px] leading-none font-light tracking-tight">{ngo.name}</h1>
+          <span className="text-[13px] text-graphite">NGO console</span>
+          <h1 className="font-display text-[56px] leading-none font-normal tracking-tight">{ngo.name}</h1>
           <div className="mt-3 flex items-center gap-2">
             <StatusBadge status={ngo.frozen ? "Frozen" : "Active"} />
             {flags.map((f) => (
@@ -62,7 +62,7 @@ function Console() {
               const total = ls.reduce((s, l) => s + l.amount, 0);
               const left = ls.reduce((s, l) => s + l.remaining, 0);
               return (
-                <Card key={cat} className="p-6" whileHover={{ y: -2 }}>
+                <Card key={cat} className="p-6 hover:border-ash/40">
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-3 text-[16px] font-medium">
                       <IconOrb>
@@ -70,12 +70,12 @@ function Console() {
                       </IconOrb>
                       {cat}
                     </span>
-                    <span className="text-[12px] text-graphite">{ls.length} lots</span>
+                    <span className="text-[13px] text-graphite">{ls.length} lots</span>
                   </div>
-                  <div className="mt-6 font-display text-[36px] leading-none font-light">
+                  <div className="mt-6 font-display text-[36px] leading-none font-normal">
                     <Rupees value={left} />
                   </div>
-                  <div className="mt-1 text-[12px] text-graphite">
+                  <div className="mt-1 text-[13px] text-graphite">
                     locked in escrow of <Rupees value={total} /> donated
                   </div>
                   <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-hairline">
@@ -124,10 +124,10 @@ function Console() {
                     </span>
                     <CategoryIcon category={CATEGORIES[i.category]} />
                   </div>
-                  <div className="mt-3 font-display text-[24px] font-light">
+                  <div className="mt-3 font-display text-[24px] font-normal">
                     <Rupees value={i.amount} />
                   </div>
-                  <div className="mt-1 text-[12px] text-graphite">
+                  <div className="mt-1 text-[13px] text-graphite">
                     {new Date(i.date * 1000).toLocaleDateString("en-IN")} · {i.status}
                   </div>
                 </motion.button>
@@ -159,11 +159,11 @@ function Console() {
 function Stat({ label, value, unit, icon }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-1.5 text-[12px] text-graphite">
+      <span className="flex items-center gap-1.5 text-[13px] text-graphite">
         {icon}
         {label}
       </span>
-      <span className="font-display text-[40px] leading-none font-light tabular">
+      <span className="font-display text-[40px] leading-none font-normal tabular">
         {value}
         {unit && <span className="ml-1 text-[16px] text-graphite">{unit}</span>}
       </span>
@@ -173,11 +173,11 @@ function Stat({ label, value, unit, icon }) {
 
 /// Shared by the NGO console: every payout, its window and deliveries. Release is permissionless.
 export function PayoutTable({ payouts, frozen }) {
-  useTick();
-  const { c, tx, chainNow, state } = useApp();
+  const { c, tx, chainNow, state } = useApp("c", "tx", "chainNow", "state");
+  useRerenderAt(payoutBoundaries(payouts));
   return (
     <div className="overflow-hidden rounded-[var(--radius-card)] border border-hairline bg-paper">
-      <div className="grid grid-cols-[64px_1.2fr_1fr_1fr_1fr_1fr_140px] gap-4 border-b border-hairline px-6 py-3 text-[12px] text-graphite">
+      <div className="grid grid-cols-[64px_1.2fr_1fr_1fr_1fr_1fr_140px] gap-4 border-b border-hairline px-6 py-3 text-[13px] text-graphite">
         <span>#</span>
         <span>Vendor · invoice</span>
         <span>Amount</span>
@@ -195,7 +195,7 @@ export function PayoutTable({ payouts, frozen }) {
             <span className="flex items-center gap-2">
               <CategoryIcon category={p.category} />
               <span>
-                {p.invoice?.invoiceNo ?? "Invoice"} <span className="text-[12px] text-graphite">· {vendor?.category ?? "vendor"}</span>
+                {p.invoice?.invoiceNo ?? "Invoice"} <span className="text-[13px] text-graphite">· {vendor?.category ?? "vendor"}</span>
               </span>
             </span>
             <Rupees value={p.amount} />
@@ -206,7 +206,7 @@ export function PayoutTable({ payouts, frozen }) {
             <span className="flex flex-col items-start gap-1">
               <StatusBadge status={p.status} />
               {p.status === "Pending" && (
-                <span className="text-[12px] text-graphite">
+                <span className="text-[13px] text-graphite">
                   window <Countdown until={p.releaseAt} done="closed" />
                 </span>
               )}

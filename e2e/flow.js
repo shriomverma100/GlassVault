@@ -43,7 +43,11 @@ await page.close();
 const payoutsBefore = (await api("/api/state")).payouts.length;
 page = await open("ngoAsha", "/ngo");
 await page.getByText("MC-311").first().click();
-await page.getByText("PHC Kamptee diabetic patients").first().click();
+// a beneficiary batch can prove only one payout, so the NGO issues fresh cards for this invoice
+await page.getByPlaceholder("e.g. Wadgaon households").fill("MC-311 e2e households");
+await page.getByLabel("Cards").fill("5");
+await page.getByRole("button", { name: "Issue cards" }).click();
+await page.getByRole("button", { name: "Close", exact: true }).click(); // printable QR cards panel
 await page.waitForTimeout(1500); // live pre-checks (on-chain nullifier lookup)
 await page.screenshot({ path: shot("flow-2-prepare"), fullPage: true });
 await page.getByRole("button", { name: "Request payout" }).click();

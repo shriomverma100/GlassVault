@@ -19,7 +19,7 @@ const ROOT_DETAILS = [
 ];
 
 export default function Explore() {
-  const { state, events, config } = useApp();
+  const { state, events, config } = useApp("state", "events", "config");
   const s = state.stats;
   const label = useMemo(() => labeler(config), [config]);
   // one unit for the whole money row, so "₹3.0 L" never sits next to "₹40,000"
@@ -32,8 +32,8 @@ export default function Explore() {
     <motion.div variants={stagger()} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="flex flex-wrap items-end justify-between gap-10 pt-10 pb-8">
         <div className="max-w-[520px]">
-          <span className="text-[12px] text-graphite">Every rupee, provable</span>
-          <h1 className="font-display text-[64px] leading-[0.95] font-light tracking-tight">Fund flow</h1>
+          <span className="text-[13px] text-graphite">Every rupee, provable</span>
+          <h1 className="font-display text-[64px] leading-[0.95] font-normal tracking-tight">Fund flow</h1>
           <p className="mt-4 text-[15px] text-ash">
             Money moves only when proof moves. Each rupee below is held by a contract, released against a vendor-signed invoice, and finished only when beneficiaries prove delivery.
           </p>
@@ -96,15 +96,15 @@ function NgoCard({ ngo, state }) {
     <Card className={`relative overflow-hidden p-6 ${ngo.frozen ? "hatch" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-[12px] text-graphite">NGO #{ngo.id}</div>
+          <div className="text-[13px] text-graphite">NGO #{ngo.id}</div>
           <h3 className="font-display text-[24px] leading-tight font-medium">{ngo.name}</h3>
         </div>
         <StatusBadge status={ngo.frozen ? "Frozen" : "Active"} />
       </div>
       <div className="mt-6 flex items-end justify-between">
         <div>
-          <div className="text-[12px] text-graphite">Trust score</div>
-          <div className="font-display text-[56px] leading-none font-light tabular">
+          <div className="text-[13px] text-graphite">Trust score</div>
+          <div className="font-display text-[56px] leading-none font-normal tabular">
             {ngo.trust}
             <span className="ml-1 text-[16px] text-graphite">/100</span>
           </div>
@@ -139,7 +139,7 @@ function Stat({ k, v, dark }) {
   return (
     <div>
       <div className="text-graphite">{k}</div>
-      <div className={`font-display text-[22px] font-light tabular ${dark ? "text-obsidian" : ""}`}>{v}</div>
+      <div className={`font-display text-[22px] font-normal tabular ${dark ? "text-obsidian" : ""}`}>{v}</div>
     </div>
   );
 }
@@ -149,7 +149,7 @@ function Ticker({ events, label, state }) {
   const latest = events.slice(0, 6);
   return (
     <div className="border-t border-hairline py-4">
-      <div className="mb-3 flex items-center gap-2 text-[12px] text-graphite">
+      <div className="mb-3 flex items-center gap-2 text-[13px] text-graphite">
         <motion.span className="h-2 w-2 rounded-full bg-signal-deep" animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 1.6 }} />
         Live from the chain
       </div>

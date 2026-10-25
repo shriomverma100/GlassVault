@@ -12,8 +12,8 @@ export default function Donate() {
   return (
     <motion.div variants={stagger(0.07)} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="pt-10 pb-8">
-        <span className="text-[12px] text-graphite">Root 01 · Inbound donation</span>
-        <h1 className="font-display text-[64px] leading-[0.95] font-light tracking-tight">Donate with proof</h1>
+        <span className="text-[13px] text-graphite">Root 01 · Inbound donation</span>
+        <h1 className="font-display text-[64px] leading-[0.95] font-normal tracking-tight">Donate with proof</h1>
         <p className="mt-4 max-w-[560px] text-[15px] text-ash">Your money becomes a tagged lot held by the contract. It moves only against a vendor-signed invoice and finishes only when beneficiaries prove delivery.</p>
       </motion.section>
       <motion.div variants={fadeUp}>
@@ -26,7 +26,7 @@ export default function Donate() {
 }
 
 function DonateForm() {
-  const { state, c, chain, address, tx, chainNow, config, toast, relayer } = useApp();
+  const { state, c, chain, address, tx, chainNow, config, toast, relayer } = useApp("state", "c", "chain", "address", "tx", "chainNow", "config", "toast", "relayer");
   const navigate = useNavigate();
   const [ngoId, setNgoId] = useState(() => state.ngos.find((n) => !n.frozen)?.id ?? 0);
   const [category, setCategory] = useState("Water");
@@ -116,12 +116,12 @@ function DonateForm() {
                   className={`relative rounded-[var(--radius-card)] border p-6 text-left disabled:cursor-not-allowed ${n.frozen ? "hatch border-hairline bg-paper opacity-60" : on ? "border-obsidian bg-white" : "border-hairline bg-paper"}`}
                 >
                   {on && <motion.span layoutId="ngo-pick" transition={liquid} className="absolute top-5 right-5 grid h-7 w-7 place-items-center rounded-full bg-signal"><CheckIcon size={14} /></motion.span>}
-                  <div className="text-[12px] text-graphite">NGO #{n.id}</div>
+                  <div className="text-[13px] text-graphite">NGO #{n.id}</div>
                   <div className="font-display text-[22px] font-medium">{n.name}</div>
                   <div className="mt-4 flex items-end gap-6">
                     <div>
-                      <div className="text-[12px] text-graphite">Trust</div>
-                      <div className="font-display text-[36px] leading-none font-light tabular">{n.trust}</div>
+                      <div className="text-[13px] text-graphite">Trust</div>
+                      <div className="font-display text-[36px] leading-none font-normal tabular">{n.trust}</div>
                     </div>
                     <div className="pb-1 text-[13px] text-ash">
                       {n.payoutsCompleted}/{n.payoutsTotal} payouts proven · {n.flagCount} flags
@@ -175,8 +175,8 @@ function DonateForm() {
 
       <div className="lg:sticky lg:top-[112px] lg:self-start">
         <Card className="p-6">
-          <div className="text-[12px] text-graphite">Escrow rules — enforced by the contract</div>
-          <div className="mt-1 font-display text-[40px] leading-none font-light">
+          <div className="text-[13px] text-graphite">Escrow rules — enforced by the contract</div>
+          <div className="mt-1 font-display text-[40px] leading-none font-normal">
             <Rupees value={amt || 0} />
           </div>
           <div className="mt-1 text-[14px] text-ash">
@@ -192,7 +192,7 @@ function DonateForm() {
           <Button variant="signal" className="mt-6 w-full" disabled={!valid || busy || !!relaying} onClick={submit}>
             {busy ? "Confirming…" : source === "A" ? "Donate" : "Send over bridge"}
           </Button>
-          {amt > (balance ?? Infinity) && <div className="mt-2 text-[12px] text-graphite">Not enough dINR on chain {source}.</div>}
+          {amt > (balance ?? Infinity) && <div className="mt-2 text-[13px] text-graphite">Not enough dINR on chain {source}.</div>}
           <AnimatePresence>
             {relaying && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
@@ -224,7 +224,7 @@ function BalanceTile({ label, value, active }) {
   return (
     <div className={`rounded-[var(--radius-tile)] border p-4 ${active ? "border-obsidian bg-white" : "border-hairline bg-paper"}`}>
       <div className="text-graphite">{label}</div>
-      <div className="font-display text-[24px] font-light">{value === null ? "…" : <Rupees value={value} />}</div>
+      <div className="font-display text-[24px] font-normal">{value === null ? "…" : <Rupees value={value} />}</div>
     </div>
   );
 }

@@ -22,7 +22,7 @@ function allocate(lots, amount) {
 }
 
 export default function PreparePayout({ ngo, invoice, onDone }) {
-  const { state, chain, c, tx, toast, chainNow } = useApp();
+  const { state, chain, c, tx, toast, chainNow } = useApp("state", "chain", "c", "tx", "toast", "chainNow");
   const category = CATEGORIES[invoice.category];
   const [amount, setAmount] = useState(String(invoice.amount));
   const openLots = useMemo(
@@ -184,7 +184,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
           <Field label="Amount to request" hint={Number(amount) !== invoice.amount ? "Differs from what the vendor signed — the signature will not verify." : "Matches the vendor's signed amount."}>
             <Input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
-          <div className="mt-5 text-[12px] text-graphite">Charged to donor lots (FIFO, editable)</div>
+          <div className="mt-5 text-[13px] text-graphite">Charged to donor lots (FIFO, editable)</div>
           <div className="mt-2 divide-y divide-hairline rounded-[var(--radius-tile)] border border-hairline bg-white">
             {shares.length === 0 && <div className="p-4 text-[13px] text-graphite">No open {category} lots for this NGO.</div>}
             {shares.map((s, i) => {
@@ -193,7 +193,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
                 <div key={s.lotId} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div className="text-[13px]">
                     Lot #{s.lotId} <span className="text-graphite">· <Rupees value={lot?.remaining} /> left</span>
-                    {lot?.sourceChain !== 31337 && <span className="ml-2 text-[11px] text-graphite">bridged</span>}
+                    {lot?.sourceChain !== 31337 && <span className="ml-2 text-[12px] text-graphite">bridged</span>}
                   </div>
                   <Input
                     type="number"
@@ -213,7 +213,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
 
         <Card className="p-5">
           <div className="text-[14px] font-medium">Impact proof — beneficiary batch</div>
-          <div className="mt-1 text-[12px] text-graphite">Only the Merkle root of card commitments goes on-chain. The last 30% is released after this many QR confirmations.</div>
+          <div className="mt-1 text-[13px] text-graphite">Only the Merkle root of card commitments goes on-chain. The last 30% is released after this many QR confirmations.</div>
           <div className="mt-4 flex flex-col gap-2">
             {batches.map((b) => {
               const usedBy = usedRoots.get(b.root.toLowerCase());
@@ -235,7 +235,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
             })}
           </div>
           {batches.length > 0 && batches.every((b) => usedRoots.has(b.root.toLowerCase())) && (
-            <div className="mt-2 text-[12px] text-ash">Every batch already proves another payout. Issue a fresh batch for this invoice.</div>
+            <div className="mt-2 text-[13px] text-ash">Every batch already proves another payout. Issue a fresh batch for this invoice.</div>
           )}
           <div className="mt-4 flex items-end gap-2 border-t border-hairline pt-4">
             <Field label="New batch label">
@@ -260,7 +260,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
                   onChange={(e) => setRequired(Math.min(rootCount, Math.max(1, Math.floor(Number(e.target.value) || 1))))}
                 />
               </Field>
-              <div className="text-[12px] text-graphite">
+              <div className="text-[13px] text-graphite">
                 root <HashText value={root} />
               </div>
             </div>
@@ -271,7 +271,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
       {/* pre-checks + submit */}
       <Card className="col-span-3 flex flex-col p-5">
         <div className="text-[14px] font-medium">Live pre-checks</div>
-        <div className="mt-1 text-[12px] text-graphite">The same rules the contract enforces.</div>
+        <div className="mt-1 text-[13px] text-graphite">The same rules the contract enforces.</div>
         <div className="mt-3">
           <CheckRow ok={sigOk} label="Vendor signature" detail={sigOk ? "EIP-712 signature matches these exact fields" : "These fields were not signed by the vendor"} />
           <CheckRow ok={vendorOk} label="Registered vendor, right category" detail={vendor ? `${vendor.category} · stake ₹${vendor.stake.toLocaleString("en-IN")}` : "Vendor not registered"} />
@@ -285,7 +285,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
         </div>
         <div className="mt-auto pt-5">
           {!allOk && (
-            <div className="hatch mb-3 rounded-[var(--radius-tile)] border border-obsidian bg-white p-3 text-[12px]">
+            <div className="hatch mb-3 rounded-[var(--radius-tile)] border border-obsidian bg-white p-3 text-[13px]">
               Failing checks are not blocked. A bad signature, a reused invoice or a wrong vendor is <b>recorded on-chain as fraud</b> — two flags freeze this NGO
               automatically. Budget mismatches are rejected as discrepancies.
             </div>

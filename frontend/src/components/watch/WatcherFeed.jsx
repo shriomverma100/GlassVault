@@ -25,14 +25,14 @@ function benford(amounts) {
 }
 
 export default function WatcherFeed() {
-  const { findings, config } = useApp();
+  const { findings, config } = useApp("findings", "config");
   const challenges = findings.filter((f) => f.kind === "challenge");
 
   return (
     <Section eyebrow={`Open-source bot · ${config.roles.watcher.address.slice(0, 8)}… · same powers as any citizen`} title="Watcher">
       <div className="grid grid-cols-[1.3fr_1fr] gap-8">
         <div>
-          <div className="mb-3 text-[12px] text-graphite">Evidence published</div>
+          <div className="mb-3 text-[13px] text-graphite">Evidence published</div>
           {!challenges.length ? (
             <Empty>The watcher compares every receipt photo against all earlier ones and checks invoice dates. Findings appear here live.</Empty>
           ) : (
@@ -45,17 +45,17 @@ export default function WatcherFeed() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-[14px] font-medium">Payout #{f.payoutId} {f.skipped ? "· not challenged" : "· challenged on-chain"}</span>
-                      <span className="text-[12px] text-graphite">{new Date(f.at).toLocaleTimeString()}</span>
+                      <span className="text-[13px] text-graphite">{new Date(f.at).toLocaleTimeString()}</span>
                     </div>
                     <ul className="mt-1 space-y-1 text-[13px] text-ash">
                       {f.evidence?.map((e) => (
                         <li key={e.check}>
-                          <span className="font-mono text-[12px] text-obsidian">{e.check}</span> — {e.detail}
+                          <span className="font-mono text-[13px] text-obsidian">{e.check}</span> — {e.detail}
                         </li>
                       ))}
                       {f.skipped && <li className="text-graphite">{f.skipped}</li>}
                     </ul>
-                    <div className="mt-2 flex items-center gap-4 text-[12px]">
+                    <div className="mt-2 flex items-center gap-4 text-[13px]">
                       {f.evidenceURI && (
                         <a href={ipfsHref(f.evidenceURI)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ash underline underline-offset-2 hover:text-obsidian">
                           <LinkIcon width={14} height={14} />
@@ -77,7 +77,7 @@ export default function WatcherFeed() {
 }
 
 function BenfordPanel() {
-  const { state } = useApp();
+  const { state } = useApp("state");
   const [ngo, setNgo] = useState("all");
   const amounts = useMemo(() => state.payouts.filter((p) => ngo === "all" || p.ngoId === Number(ngo)).map((p) => p.amount), [state.payouts, ngo]);
   const res = benford(amounts);
@@ -88,13 +88,13 @@ function BenfordPanel() {
     <div className="rounded-[var(--radius-tile)] border border-hairline bg-white p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-[12px] text-graphite">Benford's law · first digit of invoice amounts</div>
-          <div className="mt-1 font-display text-[22px] font-light">{res ? res.verdict : "Not enough data"}</div>
+          <div className="text-[13px] text-graphite">Benford's law · first digit of invoice amounts</div>
+          <div className="mt-1 font-display text-[22px] font-normal">{res ? res.verdict : "Not enough data"}</div>
         </div>
         {res && (
           <div className="text-right">
-            <div className="text-[12px] text-graphite">MAD</div>
-            <div className="font-display text-[22px] font-light tabular">{res.mad.toFixed(4)}</div>
+            <div className="text-[13px] text-graphite">MAD</div>
+            <div className="font-display text-[22px] font-normal tabular">{res.mad.toFixed(4)}</div>
           </div>
         )}
       </div>
@@ -117,7 +117,7 @@ function BenfordPanel() {
         })}
         <line x1="0" x2={W} y1={H} y2={H} stroke="var(--color-hairline)" />
       </svg>
-      <div className="mt-2 flex gap-4 text-[12px] text-graphite">
+      <div className="mt-2 flex gap-4 text-[13px] text-graphite">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-signal" /> observed
         </span>

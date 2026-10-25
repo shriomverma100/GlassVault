@@ -20,6 +20,7 @@
     "check": "npm test && npm run benchmark && npm run lint && npm run build",
     "perf": "node e2e/perf.js",
     "start:prod": "node scripts/dev.mjs --prod",
-    "start:test": "node scripts/dev.mjs --prod --profile=test"
+    "start:test": "node scripts/dev.mjs --prod --profile=test",
+    "e2e:full": "node scripts/e2e.mjs"
   }
 }

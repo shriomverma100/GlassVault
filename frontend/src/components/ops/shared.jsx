@@ -12,7 +12,7 @@ export const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCas
 
 /// GET a backend list and refetch whenever the live chain state changes.
 export function useApiList(path) {
-  const { state } = useApp();
+  const { state } = useApp("state");
   const [data, setData] = useState([]);
   const reload = useCallback(() => {
     if (!path) return;
@@ -24,7 +24,7 @@ export function useApiList(path) {
 
 /// Receipt CID for a fileHash: from the invoice (if the backend stored it) or from any payout's file index.
 export function useReceiptCid(fileHash, invoice) {
-  const { state } = useApp();
+  const { state } = useApp("state");
   return invoice?.cid ?? state?.payouts.find((p) => p.fileHash === fileHash && p.file)?.file?.cid ?? null;
 }
 
@@ -41,7 +41,7 @@ export function CheckRow({ ok, pending, label, detail }) {
       </span>
       <div className="min-w-0">
         <div className="text-[14px] font-medium">{label}</div>
-        {detail && <div className="mt-0.5 text-[12px] text-graphite">{detail}</div>}
+        {detail && <div className="mt-0.5 text-[13px] text-graphite">{detail}</div>}
       </div>
     </div>
   );
@@ -71,11 +71,11 @@ export function ProgressRing({ value, max, size = 120, label }) {
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="font-display text-[32px] leading-none font-light tabular">
+        <span className="font-display text-[32px] leading-none font-normal tabular">
           {value}
           <span className="text-[16px] text-graphite">/{max}</span>
         </span>
-        {label && <span className="mt-1 text-[11px] text-graphite">{label}</span>}
+        {label && <span className="mt-1 text-[12px] text-graphite">{label}</span>}
       </div>
     </div>
   );
@@ -102,12 +102,12 @@ export function QrCards({ cards, label }) {
       <div className="grid grid-cols-2 gap-3">
         {cards.map((c) => (
           <div key={c.n} className="rounded-[var(--radius-tile)] border border-hairline bg-white p-4">
-            <div className="flex items-center justify-between text-[12px] text-graphite">
+            <div className="flex items-center justify-between text-[13px] text-graphite">
               <span>{label || "Beneficiary card"}</span>
               <span className="font-mono">#{String(c.n).padStart(3, "0")}</span>
             </div>
             {urls[c.n] ? <img src={urls[c.n]} alt={`QR card ${c.n}`} className="mx-auto my-3 h-40 w-40" /> : <div className="my-3 h-40" />}
-            <div className="font-mono text-[10px] leading-tight break-all text-ash">{c.secret}</div>
+            <div className="font-mono text-[12px] leading-tight break-all text-ash">{c.secret}</div>
           </div>
         ))}
       </div>

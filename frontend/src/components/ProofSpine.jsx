@@ -71,7 +71,7 @@ export default function ProofSpine({ steps = [], compact = false }) {
         {ROOTS.map((label, i) => (
           <div key={label} className="flex flex-col items-center gap-3 px-3">
             <Node status={steps[i]?.status ?? "idle"} />
-            <span className="text-[12px] text-graphite">0{i + 1}</span>
+            <span className="text-[13px] text-graphite">0{i + 1}</span>
             <span className="text-center text-[14px] font-medium">{label}</span>
             {steps[i]?.detail && (
               <>

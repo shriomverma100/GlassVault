@@ -25,9 +25,14 @@ export const ROLE_META = {
 export const toWei = (n) => ethers.parseUnits(String(n), 18);
 export const fromWei = (v) => Number(ethers.formatUnits(v, 18));
 
+// How often tx.wait() polls for the receipt. Local chains mine instantly, so 1s polling made every
+// action feel 1s slow; public testnets should raise this (config.pollingMs) to respect RPC limits.
+const POLL_MS = 200;
+
 export function makeChain(config) {
-  const providerA = new ethers.JsonRpcProvider(config.rpcA, undefined, { staticNetwork: true, pollingInterval: 1000 });
-  const providerB = new ethers.JsonRpcProvider(config.rpcB, undefined, { staticNetwork: true, pollingInterval: 1000 });
+  const poll = { staticNetwork: true, pollingInterval: config.pollingMs ?? POLL_MS };
+  const providerA = new ethers.JsonRpcProvider(config.rpcA, undefined, poll);
+  const providerB = new ethers.JsonRpcProvider(config.rpcB, undefined, poll);
   const A = config.chainA;
   const B = config.chainB;
 

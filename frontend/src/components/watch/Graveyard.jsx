@@ -9,7 +9,7 @@ import { CrackLine, REASONS, timeAgo } from "./shared";
 /// Every fraud the contract recorded (NGO flags + vendor slashes), plus rejected requests that are
 /// discrepancies only (never counted toward a freeze), newest first.
 export default function Graveyard() {
-  const { state, chainNow } = useApp();
+  const { state, chainNow } = useApp("state", "chainNow");
   const discrepancies = state.discrepancies ?? [];
   const flags = [...state.flags, ...discrepancies.map((d) => ({ ...d, kind: "discrepancy" }))].sort((a, b) => b.block - a.block || b.logIndex - a.logIndex);
   const now = chainNow();
@@ -47,19 +47,19 @@ export default function Graveyard() {
                       <img src={`/ipfs/${f.file.cid}`} alt="Rejected receipt" className="h-24 w-[72px] rounded-[12px] border border-white/20 object-cover grayscale" />
                     </a>
                   ) : (
-                    <span className={`grid h-24 w-[72px] shrink-0 place-items-center rounded-[12px] border ${minor ? "border-hairline text-ash" : "border-white/20 text-white/60"}`}>
+                    <span className={`grid h-24 w-[72px] shrink-0 place-items-center rounded-[12px] border ${minor ? "border-hairline text-ash" : "border-white/20 text-white/75"}`}>
                       <CrackIcon size={24} />
                     </span>
                   )}
                   <div className="min-w-0">
-                    <div className={`text-[12px] tracking-wide uppercase ${minor ? "text-ash" : "text-white/55"}`}>{heading}</div>
-                    <h3 className="mt-1 font-display text-[22px] leading-tight font-light">{r.title}</h3>
+                    <div className={`text-[13px] font-medium ${minor ? "text-ash" : "text-white/80"}`}>{heading}</div>
+                    <h3 className="mt-1 font-display text-[22px] leading-tight font-normal">{r.title}</h3>
                     <p className={`mt-1 text-[13px] ${minor ? "text-ash" : "text-white/75"}`}>{minor ? `${r.text} · not counted toward freeze` : r.text}</p>
                   </div>
                 </div>
-                <div className={`relative mt-5 flex items-center justify-between border-t pt-3 text-[12px] ${minor ? "border-hairline text-ash" : "border-white/15 text-white/55"}`}>
+                <div className={`relative mt-5 flex items-center justify-between border-t pt-3 text-[13px] ${minor ? "border-hairline text-ash" : "border-white/15 text-white/55"}`}>
                   <span>{timeAgo(f.time, now)}</span>
-                  <HashText value={f.tx} className={minor ? "" : "!text-white/60 hover:!text-white"} />
+                  <HashText value={f.tx} className={minor ? "" : "!text-white/75 hover:!text-white"} />
                 </div>
               </motion.article>
             );
