@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { liquid, snappy } from "../../lib/motion";
 import { useApp, useTick } from "../../lib/store";
@@ -32,13 +33,37 @@ export function Button({ children, variant = "primary", className = "", disabled
   );
 }
 
+/// Labelled form field. A single input gets a real <label for> and its hint as an accessible
+/// description (not part of the name); anything else (e.g. a Segmented button group) becomes a
+/// labelled group — a <label> around buttons would forward clicks to the first one.
 export function Field({ label, hint, children }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+  const hintEl = hint && (
+    <p id={hintId} className="text-[13px] text-graphite">
+      {hint}
+    </p>
+  );
+  const control = isValidElement(children) && (children.type === Input || ["input", "select", "textarea"].includes(children.type));
+  if (control) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={id} className="text-[13px] text-graphite">
+          {label}
+        </label>
+        {cloneElement(children, { id, "aria-describedby": hintId })}
+        {hintEl}
+      </div>
+    );
+  }
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-[13px] text-graphite">{label}</span>
+    <div role="group" aria-labelledby={`${id}-label`} className="flex flex-col gap-1.5">
+      <span id={`${id}-label`} className="text-[13px] text-graphite">
+        {label}
+      </span>
       {children}
-      {hint && <span className="text-[13px] text-graphite">{hint}</span>}
-    </label>
+      {hintEl}
+    </div>
   );
 }
 
@@ -239,8 +264,28 @@ export function Toasts() {
 
 /// Shown when the acting role can't do this page's action.
 export function RoleGate({ kinds, children }) {
-  const { role, config } = useApp("role", "config");
-  const kind = config && role ? (role.startsWith("donor") ? "Donor" : role.startsWith("ngo") ? "NGO" : role.startsWith("vendor") ? "Vendor" : role === "fieldWorker" ? "Field" : "Watcher") : null;
-  if (kinds.includes(kind)) return children;
-  return <Empty>Switch role (top right) to {kinds.join(" / ")} to use this page.</Empty>;
+  const { user, authReady } = useApp("user", "authReady");
+  const location = useLocation();
+  if (!authReady) return null;
+  if (!user) {
+    return (
+      <Empty>
+        This workspace is for {kinds.join(" / ")} accounts.{" "}
+        <Link to="/login" state={{ from: location.pathname }} className="font-medium text-obsidian underline underline-offset-4">
+          Sign in
+        </Link>{" "}
+        or{" "}
+        <Link to="/signup" className="font-medium text-obsidian underline underline-offset-4">
+          create an account
+        </Link>
+        .
+      </Empty>
+    );
+  }
+  if (kinds.includes(user.kind)) return children;
+  return (
+    <Empty>
+      This workspace is for {kinds.join(" / ")} accounts — you're signed in as a {user.kind}.
+    </Empty>
+  );
 }

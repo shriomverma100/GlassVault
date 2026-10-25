@@ -2,12 +2,13 @@
 //   node e2e/perf.js            measure and compare against e2e/perf-baseline.json
 //   node e2e/perf.js --save     measure and store the result as the new baseline
 import { chromium } from "playwright-core";
+import { signIn } from "./session.js";
 import fs from "node:fs";
 
 const BASE = process.env.BASE || "http://localhost:5173";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const BASELINE = new URL("./perf-baseline.json", import.meta.url);
-const ROUTES = ["/donate", "/passport", "/ngo", "/watchtower", "/"];
+const ROUTES = ["/donate", "/passport", "/watchtower", "/"]; // a signed-in donor's navigation
 const RUNS = 3;
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
@@ -15,11 +16,11 @@ const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 await ctx.addInitScript(() => {
-  localStorage.setItem("gv-role", "donorPriya");
   window.__longTasks = [];
   new PerformanceObserver((l) => window.__longTasks.push(...l.getEntries().map((e) => e.duration))).observe({ type: "longtask", buffered: true });
 });
 const page = await ctx.newPage();
+await signIn(page, BASE, "priya");
 await page.goto(BASE + "/", { waitUntil: "networkidle" });
 await page.waitForSelector("main");
 

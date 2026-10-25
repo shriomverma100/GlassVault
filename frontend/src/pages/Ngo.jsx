@@ -23,7 +23,7 @@ function Console() {
   const [tab, setTab] = useState("inbox");
   const [selected, setSelected] = useState(null);
   const [invoices] = useApiList(ngo ? `/api/invoices?ngoId=${ngo.id}` : null);
-  if (!ngo) return <Empty>This wallet has not registered an NGO.</Empty>;
+  if (!ngo) return <RegisterNgo />;
 
   const lots = state.lots.filter((l) => l.ngoId === ngo.id);
   const payouts = state.payouts.filter((p) => p.ngoId === ngo.id).sort((a, b) => b.id - a.id);
@@ -222,5 +222,47 @@ export function PayoutTable({ payouts, frozen }) {
         );
       })}
     </div>
+  );
+}
+
+/// First step for a new NGO account: post the bond and register on-chain. The bond is slashed to
+/// whoever proves fraud, so registering costs real money — a fake NGO is not free.
+function RegisterNgo() {
+  const { c, tx, user } = useApp("c", "tx", "user");
+  const [name, setName] = useState(user?.displayName ?? "");
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true);
+    try {
+      const bond = await c.vault.NGO_BOND();
+      await tx("Approve ₹10,000 NGO bond", () => c.dinr.approve(c.vault.target, bond));
+      await tx("Register NGO", () => c.vault.registerNGO(name.trim()));
+    } catch {
+      // toasted
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Section eyebrow="Step 1 of your NGO account" title="Register your NGO on-chain">
+      <Card className="max-w-[640px] p-8">
+        <p className="text-[15px] text-ash">
+          Registering locks a <span className="font-medium text-obsidian">₹10,000 bond</span> in the contract. Donors can then give to you; if fraud is ever proven
+          against you, the bond goes to whoever caught it.
+        </p>
+        <label className="mt-6 flex flex-col gap-1.5">
+          <span className="text-[13px] text-graphite">Public NGO name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={60}
+            className="h-11 rounded-[var(--radius-input)] border border-hairline bg-white px-4 text-[14px] outline-none focus:border-obsidian"
+          />
+        </label>
+        <Button className="mt-6" disabled={busy || !name.trim()} onClick={go}>
+          {busy ? "Registering…" : "Post bond and register"}
+        </Button>
+      </Card>
+    </Section>
   );
 }

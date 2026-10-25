@@ -12,7 +12,7 @@ const PORT = Number(process.env.GV_WEB_PORT || 5173);
 const rpc = (target) => ({ target, changeOrigin: true, rewrite: () => "/" });
 // chains are proxied so the browser never hits CORS; the same table serves dev and the production preview
 const proxy = {
-  "/api": API,
+  "/api": { target: API, xfwd: true }, // forwards the client IP so login rate limits are per client
   "/ipfs": API,
   "/ws": { target: API.replace(/^http/, "ws"), ws: true },
   "/rpcA": rpc(RPC_A),

@@ -233,7 +233,7 @@ function IssueInvoice({ vendor, onIssued }) {
         </Card>
 
         <Card className="col-span-5 flex flex-col p-6">
-          <div className="text-[14px] font-medium">You are signing (EIP-712)</div>
+          <div className="text-[14px] font-medium">You are signing these exact invoice fields</div>
           <div className="mt-1 text-[13px] text-graphite">Any change to these fields after signing breaks the signature on-chain.</div>
           <div className="mt-4">
             <KV k="vendor"><HashText value={address} /></KV>

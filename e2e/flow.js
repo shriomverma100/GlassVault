@@ -4,6 +4,7 @@
 //      passes all live pre-checks and requests the payout → payout appears on-chain
 //   node e2e/flow.js
 import { chromium } from "playwright-core";
+import { signIn } from "./session.js";
 import { fileURLToPath } from "node:url";
 
 const BASE = process.env.BASE || "http://localhost:5173";
@@ -14,10 +15,11 @@ const api = (p) => fetch(`${process.env.API || "http://localhost:4000"}${p}`).th
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const errors = [];
-const open = async (role, path) => {
+const open = async (username, path) => {
+  await ctx.clearCookies();
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.addInitScript((r) => localStorage.setItem("gv-role", r), role);
+  await signIn(page, BASE, username);
   await page.goto(BASE + path, { waitUntil: "networkidle" });
   return page;
 };
@@ -25,7 +27,7 @@ const step = (msg) => console.log(`  · ${msg}`);
 
 // 1 — donate
 const before = (await api("/api/state")).lots.length;
-let page = await open("donorPriya", "/donate");
+let page = await open("priya", "/donate");
 await page.getByText("Asha Foundation").first().click();
 await page.getByRole("button", { name: "Water" }).click();
 await page.locator('input[type="number"]').first().fill("5000");
@@ -41,7 +43,7 @@ await page.close();
 
 // 2 — NGO submits MC-311
 const payoutsBefore = (await api("/api/state")).payouts.length;
-page = await open("ngoAsha", "/ngo");
+page = await open("asha", "/ngo");
 await page.getByText("MC-311").first().click();
 // a beneficiary batch can prove only one payout, so the NGO issues fresh cards for this invoice
 await page.getByPlaceholder("e.g. Wadgaon households").fill("MC-311 e2e households");

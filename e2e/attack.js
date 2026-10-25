@@ -3,6 +3,7 @@
 //   → donors' verdict (challenge upheld, stakes slashed) → 100-receipt benchmark card.
 //   node e2e/attack.js
 import { chromium } from "playwright-core";
+import { signIn } from "./session.js";
 import { fileURLToPath } from "node:url";
 
 const BASE = process.env.BASE || "http://localhost:5173";
@@ -18,7 +19,7 @@ const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
-await page.addInitScript(() => localStorage.setItem("gv-role", "watcher"));
+await signIn(page, BASE, "watcher");
 await page.goto(`${BASE}/watchtower`, { waitUntil: "networkidle" });
 
 const shadow = () => api("/api/state").then((s) => s.ngos[1]);

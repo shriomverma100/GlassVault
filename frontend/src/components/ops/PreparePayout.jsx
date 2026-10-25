@@ -213,7 +213,7 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
 
         <Card className="p-5">
           <div className="text-[14px] font-medium">Impact proof — beneficiary batch</div>
-          <div className="mt-1 text-[13px] text-graphite">Only the Merkle root of card commitments goes on-chain. The last 30% is released after this many QR confirmations.</div>
+          <div className="mt-1 text-[13px] text-graphite">Only a fingerprint of the card list goes on-chain — no names. The last 30% is paid after this many cards confirm delivery.</div>
           <div className="mt-4 flex flex-col gap-2">
             {batches.map((b) => {
               const usedBy = usedRoots.get(b.root.toLowerCase());

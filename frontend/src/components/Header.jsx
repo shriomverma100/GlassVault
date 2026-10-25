@@ -1,27 +1,40 @@
-import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { LogoMark, EyeIcon, VaultIcon, InvoiceIcon, ShieldCheckIcon, WalletIcon, DropletIcon, QrIcon, UploadIcon } from "./icons";
 import { liquid, snappy } from "../lib/motion";
 import { useApp } from "../lib/store";
-import { ROLE_META, short } from "../lib/chain";
+import { short } from "../lib/chain";
 
-const NAV = [
-  { to: "/", label: "Explore", icon: <DropletIcon /> },
-  { to: "/donate", label: "Donate", icon: <VaultIcon /> },
-  { to: "/passport", label: "Passport", icon: <ShieldCheckIcon /> },
-  { to: "/ngo", label: "NGO", icon: <InvoiceIcon /> },
-  { to: "/vendor", label: "Vendor", icon: <UploadIcon /> },
-  { to: "/field", label: "Field", icon: <QrIcon /> },
-  { to: "/watchtower", label: "Watchtower", icon: <EyeIcon /> },
-];
+const ITEM = {
+  explore: { to: "/", label: "Explore", icon: <DropletIcon /> },
+  donate: { to: "/donate", label: "Donate", icon: <VaultIcon /> },
+  myDonations: { to: "/passport", label: "My donations", icon: <ShieldCheckIcon /> },
+  passports: { to: "/passport", label: "Passports", icon: <ShieldCheckIcon /> },
+  ngo: { to: "/ngo", label: "NGO console", icon: <InvoiceIcon /> },
+  vendor: { to: "/vendor", label: "Invoices", icon: <UploadIcon /> },
+  field: { to: "/field", label: "Deliveries", icon: <QrIcon /> },
+  watchtower: { to: "/watchtower", label: "Watchtower", icon: <EyeIcon /> },
+};
+
+// Each account sees its own workspace first; Explore, Passports and Watchtower are public to everyone.
+const NAV = {
+  public: ["explore", "passports", "watchtower"],
+  Donor: ["explore", "donate", "myDonations", "watchtower"],
+  NGO: ["ngo", "explore", "passports", "watchtower"],
+  Vendor: ["vendor", "explore", "watchtower"],
+  Field: ["field", "explore", "watchtower"],
+  Watcher: ["watchtower", "explore", "passports"],
+};
 
 const H = 88;
 
 // Obsidian header band with the smooth S-curve cut-out from the reference design.
 export default function Header() {
   const { pathname } = useLocation();
-  const active = NAV.find((n) => (n.to === "/" ? pathname === "/" : pathname.startsWith(n.to)))?.to;
+  const { user } = useApp("user");
+  const items = NAV[user?.kind ?? "public"].map((k) => ITEM[k]);
+  const active = items.find((n) => (n.to === "/" ? pathname === "/" : pathname.startsWith(n.to)))?.to;
   return (
     <header className="sticky top-0 z-30 flex bg-bone" style={{ height: H }}>
       <NavLink to="/" className="flex items-center gap-3 pl-8 pr-4">
@@ -33,17 +46,17 @@ export default function Header() {
         <path d={`M0 0 C48 0 48 ${H} 96 ${H} L96 0 Z`} fill="var(--color-charcoal)" />
       </svg>
 
-      <nav className="flex flex-1 items-center justify-between gap-4 bg-charcoal pr-6">
+      <nav aria-label="Main" className="flex flex-1 items-center justify-between gap-4 bg-charcoal pr-6">
         <div className="flex items-center gap-1.5">
-          {NAV.map((n) => {
+          {items.map((n) => {
             const on = n.to === active;
             return (
-              <NavLink key={n.to} to={n.to}>
+              <NavLink key={n.label} to={n.to}>
                 <motion.span
                   whileHover="hover"
                   whileTap={{ scale: 0.97 }}
                   transition={snappy}
-                  className={`relative flex h-11 items-center gap-2 rounded-full px-4 text-[14px] font-medium ${on ? "text-obsidian" : "bg-white/8 text-white/75 hover:text-white"}`}
+                  className={`relative flex h-11 items-center gap-2 rounded-full px-4 text-[14px] font-medium ${on ? "text-obsidian" : "bg-white/8 text-white/85 hover:text-white"}`}
                 >
                   {on && <motion.span layoutId="nav-pill" transition={liquid} className="absolute inset-0 rounded-full bg-white" />}
                   <span className="relative z-10 flex items-center gap-2">
@@ -55,67 +68,78 @@ export default function Header() {
             );
           })}
         </div>
-        <RoleSwitcher />
+        {user ? (
+          <AccountMenu user={user} />
+        ) : (
+          <div className="flex items-center gap-2">
+            <Link to="/login" className="flex h-11 items-center rounded-full px-5 text-[14px] font-medium text-white/85 hover:text-white">
+              Sign in
+            </Link>
+            <Link to="/signup" className="flex h-11 items-center rounded-full bg-signal px-5 text-[14px] font-medium text-obsidian hover:bg-signal-soft">
+              Create account
+            </Link>
+          </div>
+        )}
       </nav>
     </header>
   );
 }
 
-/// Acting identity. Each role is a real funded account on the local chains; all actions are signed txs.
-function RoleSwitcher() {
-  const { role, switchRole, config, address } = useApp("role", "switchRole", "config", "address");
+function AccountMenu({ user }) {
+  const { logout } = useApp("logout");
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const meta = ROLE_META[role];
-  const groups = ["Donor", "NGO", "Vendor", "Field", "Watcher"];
+  const ref = useRef(null);
+
+  // close on outside click / Escape
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
-      <motion.button
-        whileHover="hover"
-        whileTap={{ scale: 0.97 }}
-        transition={snappy}
+    <div ref={ref} className="relative">
+      <button
         onClick={() => setOpen((o) => !o)}
-        className="flex h-11 items-center gap-3 rounded-full bg-signal pr-5 pl-4 text-[14px] font-medium text-obsidian"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex h-11 items-center gap-3 rounded-full bg-signal pr-5 pl-4 text-[14px] font-medium text-obsidian hover:bg-signal-soft"
       >
         <WalletIcon />
         <span className="flex flex-col items-start leading-tight">
-          <span>{meta?.label}</span>
-          <span className="font-mono text-[12px] opacity-70">{short(address ?? "", 4)}</span>
+          <span>{user.displayName}</span>
+          <span className="text-[12px] text-obsidian/75">
+            {user.kind} · <span className="font-mono">{short(user.address, 4)}</span>
+          </span>
         </span>
-      </motion.button>
-      <AnimatePresence>
-        {open && config && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={liquid}
-            className="absolute top-14 right-0 z-50 w-[300px] rounded-[var(--radius-tile)] border border-hairline bg-paper p-2"
+      </button>
+      {open && (
+        <div role="menu" className="page-enter absolute top-14 right-0 z-50 w-[280px] rounded-[var(--radius-tile)] border border-hairline bg-paper p-2">
+          <div className="px-3 py-2">
+            <div className="text-[14px] font-medium">{user.displayName}</div>
+            <div className="text-[13px] text-ash">@{user.username}</div>
+            <div className="mt-1 font-mono text-[12px] break-all text-ash">{user.address}</div>
+          </div>
+          <button
+            role="menuitem"
+            onClick={async () => {
+              setOpen(false);
+              await logout();
+              navigate("/");
+            }}
+            className="w-full rounded-full px-3 py-2 text-left text-[14px] hover:bg-white"
           >
-            <div className="px-3 py-2 text-[13px] text-graphite">Act as — every role is a real wallet on the local chain</div>
-            {groups.map((g) => (
-              <div key={g} className="border-t border-hairline py-1">
-                {Object.entries(ROLE_META)
-                  .filter(([, m]) => m.kind === g)
-                  .map(([r, m]) => (
-                    <button
-                      key={r}
-                      onClick={() => {
-                        switchRole(r);
-                        setOpen(false);
-                      }}
-                      className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-left text-[14px] hover:bg-white ${r === role ? "bg-signal-mist" : ""}`}
-                    >
-                      <span>
-                        {m.label} <span className="text-graphite">· {m.kind}</span>
-                      </span>
-                      <span className="font-mono text-[12px] text-graphite">{short(config.roles[r]?.address ?? "", 3)}</span>
-                    </button>
-                  ))}
-              </div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }

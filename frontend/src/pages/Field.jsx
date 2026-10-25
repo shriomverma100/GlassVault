@@ -6,7 +6,7 @@ import { Html5Qrcode } from "html5-qrcode";
 import { api } from "../lib/api";
 import { useApp } from "../lib/store";
 import { fadeUp, liquid, stagger } from "../lib/motion";
-import { Button, Card, Empty, Field as FormField, HashText, Input, Rupees, Section, StatusBadge } from "../components/ui/kit";
+import { Button, Card, Empty, Field as FormField, HashText, Input, Rupees, Section, StatusBadge, RoleGate } from "../components/ui/kit";
 import { IconOrb } from "../components/ui/primitives";
 import { CategoryIcon, CheckIcon, QrIcon } from "../components/icons";
 import { ProgressRing } from "../components/ops/shared";
@@ -14,7 +14,15 @@ import { ProgressRing } from "../components/ops/shared";
 const coder = ethers.AbiCoder.defaultAbiCoder();
 
 export default function Field() {
-  const { state, role } = useApp("state", "role");
+  return (
+    <RoleGate kinds={["Field"]}>
+      <Deliveries />
+    </RoleGate>
+  );
+}
+
+function Deliveries() {
+  const { state } = useApp("state");
   const open = state.payouts.filter((p) => ["Pending", "Released"].includes(p.status) && p.deliveries < p.deliveriesRequired && !state.ngos[p.ngoId]?.frozen);
   const [payoutId, setPayoutId] = useState(open[0]?.id ?? null);
   const payout = state.payouts.find((p) => p.id === payoutId);
@@ -25,10 +33,9 @@ export default function Field() {
         <span className="text-[13px] text-graphite">④ Cryptographic impact verification</span>
         <h1 className="font-display text-[56px] leading-none font-normal tracking-tight">Field delivery</h1>
         <p className="mt-3 max-w-[640px] text-[14px] text-ash">
-          Scan a beneficiary's QR card at handover. The chain checks the card against the NGO's Merkle root and burns a delivery nullifier — the person's identity
+          Scan a beneficiary's QR card at handover. The chain checks the card is on the NGO's approved list and marks it used for this payout — the person's identity
           never leaves the card.
         </p>
-        {role !== "fieldWorker" && <div className="mt-3 text-[13px] text-graphite">Tip: switch role to Field worker. Any wallet can confirm, the card secret is the proof.</div>}
       </motion.section>
 
       <motion.div variants={fadeUp}>

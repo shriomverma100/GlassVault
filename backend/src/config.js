@@ -20,7 +20,7 @@ export const RPC_B = process.env.RPC_B || "http://127.0.0.1:8546";
 
 // Local chains use the public Hardhat dev mnemonic. On any real network, set RELAYER_KEY / WATCHER_KEY.
 const DEV_MNEMONIC = "test test test test test test test test test test test junk";
-const devKey = (i) => ethers.HDNodeWallet.fromPhrase(DEV_MNEMONIC, undefined, `m/44'/60'/0'/0/${i}`).privateKey;
+export const devKey = (i) => ethers.HDNodeWallet.fromPhrase(DEV_MNEMONIC, undefined, `m/44'/60'/0'/0/${i}`).privateKey;
 
 /// Fixed role → Hardhat account index map, shared with the seed script and the frontend role switcher.
 export const ROLES = {
@@ -41,6 +41,9 @@ export const roleKey = (role) => devKey(ROLES[role]);
 
 export const RELAYER_KEY = process.env.RELAYER_KEY || roleKey("relayer");
 export const WATCHER_KEY = process.env.WATCHER_KEY || roleKey("watcher");
+// Local faucet: dINR is minted by the DINR owner (the deployer = relayer key); gas comes from an unused
+// dev account (#19) so faucet sends don't race the relayer on the deployer's nonce.
+export const FAUCET_GAS_KEY = process.env.FAUCET_GAS_KEY || devKey(19);
 
 export function chains() {
   const depA = loadDeployment("chainA");

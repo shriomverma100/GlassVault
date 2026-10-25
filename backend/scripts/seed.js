@@ -3,6 +3,41 @@
 // transaction; the backend must be running (it indexes, stores files and relays the bridge).
 import { ethers } from "ethers";
 import { setup, api, uploadFile, renderReceipt, signInvoice, advance, sleep, inr, CAT } from "./lib.js";
+import { roleKey } from "../src/config.js";
+import { createAccount, userByUsername } from "../src/accounts.js";
+
+// Logins for the seeded history. LOCAL-CHAIN SEED DATA ONLY: the dev keys are public (Hardhat
+// mnemonic) and so is this password — never reuse either on a real network.
+const SEED_PASSWORD = "glassvault-local";
+const SEED_ACCOUNTS = [
+  ["priya", "donorPriya", "Donor", "Priya"],
+  ["rahul", "donorRahul", "Donor", "Rahul"],
+  ["tatacsr", "donorCSR", "Donor", "Tata CSR"],
+  ["asha", "ngoAsha", "NGO", "Asha Foundation"],
+  ["shadow", "ngoShadow", "NGO", "Shadow Trust"],
+  ["bluewell", "vendorWater", "Vendor", "BlueWell Pumps"],
+  ["medicare", "vendorMedical", "Vendor", "MediCare Supplies"],
+  ["vidya", "vendorEducation", "Vendor", "Vidya Books"],
+  ["quickfix", "vendorShell", "Vendor", "QuickFix Traders"],
+  ["field", "fieldWorker", "Field", "Field worker"],
+  ["watcher", "watcher", "Watcher", "Watcher"],
+];
+
+/// Idempotent: existing usernames are skipped. Keystores use the same scrypt cost as the browser.
+async function seedAccounts() {
+  console.log("\nlogins for the seeded roles (local chain only):");
+  for (const [username, role, kind, displayName] of SEED_ACCOUNTS) {
+    const wallet = new ethers.Wallet(roleKey(role));
+    let note = "exists";
+    if (!userByUsername(username)) {
+      const keystore = await ethers.encryptKeystoreJson({ address: wallet.address, privateKey: wallet.privateKey }, SEED_PASSWORD, { scrypt: { N: 2 ** 15 } });
+      const out = await createAccount({ username, password: SEED_PASSWORD, kind, displayName, address: wallet.address, keystore });
+      note = out.error ? `skipped: ${out.error}` : "created";
+    }
+    console.log(`   ${username.padEnd(10)} ${kind.padEnd(8)} ${displayName.padEnd(18)} ${wallet.address}  ${note}`);
+  }
+  console.log(`   password for all: ${SEED_PASSWORD}`);
+}
 
 const ctx = setup();
 const { vaultAs, tokenA, tokenB, gatewayB, address, providerA, depA } = ctx;
@@ -13,6 +48,7 @@ const inDays = async (d) => (await providerA.getBlock("latest")).timestamp + d *
 const [nNgos] = await vaultAs("relayer").counts();
 if (nNgos > 0n) {
   console.log("Already seeded — redeploy contracts (npm run deploy in contracts/) to start fresh.");
+  await seedAccounts();
   process.exit(0);
 }
 
@@ -96,4 +132,5 @@ console.log("   (invoice MC-311 is signed and waiting in Asha Foundation's inbox
 console.log(`   beneficiary card secrets for batch ${batch2.root.slice(0, 10)}… :`);
 batch2.cards.forEach((c) => console.log(`     card ${c.n}: ${c.secret}`));
 
+await seedAccounts();
 console.log("\n✔ seeded. Open the dashboard.");

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ethers } from "ethers";
 import { api } from "./api";
 import { makeChain, reason } from "./chain";
+import { setDirectory } from "./derive";
+import { createWallet, unlockWallet } from "./wallet";
 
 /// Global app state: config, live chain state over WebSocket, the acting role (signer), toasts,
 /// and a `tx()` helper that runs a transaction with pending/success/error feedback.
@@ -17,7 +20,11 @@ let snap = {
   benchmark: null,
   relayer: null, // latest bridge relayer status: delivered | failed
   frozenAlert: null,
-  role: localStorage.getItem("gv-role") || "donorPriya",
+  authReady: false, // true once we know whether a session exists
+  user: null, // { id, username, kind, displayName, address }
+  keystore: null, // encrypted wallet JSON (from the server, decryptable only with the password)
+  wallet: null, // unlocked ethers.Wallet — memory only, gone on reload/logout
+  unlockRequest: null, // pending "enter your password to sign" prompt
   address: null,
   signer: null,
   c: null,
@@ -32,11 +39,48 @@ function set(partial) {
   listeners.forEach((fn) => fn());
 }
 
-/// Signer, address and contract handles for a role — recomputed only when the role or chain changes.
-function identity(chain, config, role) {
-  if (!chain || !config) return { address: null, signer: null, c: null };
-  const signer = chain.devSigner(role, "A");
-  return { address: config.roles[role]?.address ?? null, signer, c: chain.contracts(signer, chain.devSigner(role, "B")) };
+/// Signs with the account wallet; if it is locked (page reload), asks for the password first and then
+/// continues the same action. Contracts are bound to it once, so components never hold a stale signer.
+class AccountSigner extends ethers.AbstractSigner {
+  constructor(address, provider) {
+    super(provider);
+    this.address = address;
+  }
+  connect(provider) {
+    return new AccountSigner(this.address, provider);
+  }
+  async getAddress() {
+    return this.address;
+  }
+  async #wallet() {
+    return (await requireWallet()).connect(this.provider);
+  }
+  async signTransaction(tx) {
+    return (await this.#wallet()).signTransaction(tx);
+  }
+  async sendTransaction(tx) {
+    return (await this.#wallet()).sendTransaction(tx);
+  }
+  async signMessage(m) {
+    return (await this.#wallet()).signMessage(m);
+  }
+  async signTypedData(domain, types, value) {
+    return (await this.#wallet()).signTypedData(domain, types, value);
+  }
+}
+
+/// Signer, address and contract handles for the signed-in account (read-only when signed out).
+function identity(chain, user) {
+  if (!chain) return { address: null, signer: null, c: null };
+  if (!user) return { address: null, signer: null, c: chain.contracts() };
+  const signer = new AccountSigner(user.address, chain.providerA);
+  return { address: user.address, signer, c: chain.contracts(signer, signer.connect(chain.providerB)) };
+}
+
+function requireWallet() {
+  if (snap.wallet) return Promise.resolve(snap.wallet);
+  if (!snap.keystore) return Promise.reject(new Error("Sign in to do this"));
+  return new Promise((resolve, reject) => set({ unlockRequest: { resolve, reject } }));
 }
 
 // ── actions (stable references) ─────────────────────────────────────────────
@@ -47,21 +91,58 @@ function toast(t) {
   setTimeout(() => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })), t.ms ?? 5000);
 }
 
-function switchRole(role) {
-  localStorage.setItem("gv-role", role);
-  set((s) => ({ role, ...identity(s.chain, s.config, role) }));
+// ── accounts ────────────────────────────────────────────────────────────────
+
+const loadDirectory = () => api.get("/api/directory").then(setDirectory).catch(() => {});
+
+function signedIn(user, keystore, wallet) {
+  set((s) => ({ user, keystore, wallet, unlockRequest: null, ...identity(s.chain, user) }));
 }
 
-// One send queue per role: a send starts only after the previous one reached the chain, so the
+async function login(username, password) {
+  const { user, keystore } = await api.post("/api/auth/login", { username: username.trim().toLowerCase(), password });
+  signedIn(user, keystore, await unlockWallet(keystore, password));
+  return user;
+}
+
+/// Creates the wallet in the browser, then the account. Returns the user (wallet unlocked).
+async function signup({ username, password, kind, displayName }) {
+  const { address, keystore } = await createWallet(password);
+  const { user } = await api.post("/api/auth/signup", { username: username.trim().toLowerCase(), password, kind, displayName: displayName.trim(), address, keystore });
+  signedIn(user, keystore, await unlockWallet(keystore, password));
+  loadDirectory();
+  return user;
+}
+
+async function logout() {
+  await api.post("/api/auth/logout").catch(() => {});
+  snap.unlockRequest?.reject(new Error("Signed out"));
+  signedIn(null, null, null);
+}
+
+/// Answers the unlock prompt. Throws "Wrong password" so the prompt can say so and stay open.
+async function unlock(password) {
+  const wallet = await unlockWallet(snap.keystore, password);
+  const req = snap.unlockRequest;
+  set({ wallet, unlockRequest: null });
+  req?.resolve(wallet);
+}
+
+function cancelUnlock() {
+  snap.unlockRequest?.reject(new Error("Signing cancelled"));
+  set({ unlockRequest: null });
+}
+
+// One send queue per account: a send starts only after the previous one reached the chain, so the
 // wallet's pending-nonce lookup never hands the same nonce to two rapid clicks.
 const sendQueues = new Map();
 
 /// Runs `fn` (returns a tx or a promise of a tx), waits for it, toasts the outcome.
 async function tx(label, fn) {
-  const { role } = snap;
+  const who = snap.user?.address ?? "anon";
   toast({ title: label, body: "Waiting for confirmation…", tone: "pending", ms: 2500 });
-  const sending = (sendQueues.get(role) ?? Promise.resolve()).then(() => fn());
-  sendQueues.set(role, sending.catch(() => {}));
+  const sending = (sendQueues.get(who) ?? Promise.resolve()).then(() => fn());
+  sendQueues.set(who, sending.catch(() => {}));
   try {
     const sent = await sending;
     const rc = await sent.wait();
@@ -79,7 +160,12 @@ const chainNow = () => Math.floor(Date.now() / 1000) + snap.clockSkew;
 const actions = {
   toast,
   tx,
-  switchRole,
+  login,
+  signup,
+  logout,
+  unlock,
+  cancelUnlock,
+  loadDirectory,
   chainNow,
   setBenchmark: (benchmark) => set({ benchmark }),
   dismissFrozen: () => set({ frozenAlert: null }),
@@ -112,7 +198,7 @@ export function AppProvider({ children }) {
       if (stop) return;
       const config = { ...raw, rpcA: `${location.origin}/rpcA`, rpcB: `${location.origin}/rpcB` };
       const chain = makeChain(config);
-      set((s) => ({ config, chain, ...identity(chain, config, s.role) }));
+      set((s) => ({ config, chain, ...identity(chain, s.user) }));
       const sync = () =>
         chain.providerA
           .getBlock("latest")
@@ -124,6 +210,12 @@ export function AppProvider({ children }) {
       sync();
       clock = setInterval(sync, 5000);
     });
+    api
+      .get("/api/auth/me")
+      .then(({ user, keystore }) => !stop && user && signedIn(user, keystore, null))
+      .catch(() => {})
+      .finally(() => !stop && set({ authReady: true }));
+    loadDirectory();
     api.get("/api/events?limit=200").then((events) => !stop && set({ events }));
     api.get("/api/watcher").then((findings) => !stop && set({ findings }));
 

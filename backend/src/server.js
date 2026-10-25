@@ -8,7 +8,8 @@ import path from "node:path";
 import { WebSocketServer } from "ws";
 import { ethers } from "ethers";
 import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
-import { chains, ROLES, roleKey, RELAYER_KEY, WATCHER_KEY, ROOT_DIR, RPC_A, RPC_B } from "./config.js";
+import { chains, ROLES, roleKey, RELAYER_KEY, WATCHER_KEY, FAUCET_GAS_KEY, ROOT_DIR, RPC_A, RPC_B } from "./config.js";
+import { authRouter, sessionMiddleware } from "./auth.js";
 import { db, save, putFile, getFileByCid } from "./store.js";
 import { Indexer } from "./indexer.js";
 import { Watcher } from "./watcher.js";
@@ -21,7 +22,10 @@ const CATEGORY = ["Water", "Medical", "Education"];
 const { depA, depB, providerA, providerB } = chains();
 const app = express();
 app.use(cors());
+app.set("trust proxy", "loopback"); // the Vite proxy forwards from localhost; use X-Forwarded-For for rate limits
 app.use(express.json({ limit: "2mb" }));
+app.use(sessionMiddleware);
+app.use("/api", authRouter({ depA, depB, providerA, providerB, funderKey: RELAYER_KEY, gasKey: FAUCET_GAS_KEY }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const server = createServer(app);
@@ -181,6 +185,13 @@ app.post("/api/demo/benchmark", (_q, res) => {
     });
   });
   ok(res, { status: "started" });
+});
+
+// JSON errors for anything thrown in a route (never an HTML stack trace)
+app.use((err, _req, res, _next) => {
+  if (err?.type === "entity.parse.failed") return bad(res, "Malformed JSON body");
+  console.error("[api]", err?.shortMessage || err?.message || err);
+  bad(res, "Internal error", 500);
 });
 
 // ─────────────── boot ───────────────

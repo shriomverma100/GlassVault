@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "../../lib/store";
 import { api } from "../../lib/api";
-import { CATEGORIES, ROLE_META, short } from "../../lib/chain";
+import { CATEGORIES } from "../../lib/chain";
+import { labeler } from "../../lib/derive";
 import { Button, Field, Input, Rupees, Section, Segmented } from "../ui/kit";
 import { CheckIcon, CrossIcon } from "../icons";
 import { liquid } from "../../lib/motion";
@@ -18,10 +19,7 @@ export default function Reconciler() {
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const donorName = (addr) => {
-    const role = Object.entries(config.roles).find(([, r]) => r.address.toLowerCase() === addr?.toLowerCase())?.[0];
-    return ROLE_META[role]?.label ?? short(addr);
-  };
+  const donorName = useMemo(() => labeler(config), [config]);
   const donors = [...new Set(state.lots.map((l) => l.donor))];
   const payouts = state.payouts.filter((p) => p.ngoId === Number(ngoId));
 

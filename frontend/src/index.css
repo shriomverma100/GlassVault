@@ -56,7 +56,7 @@
   from { opacity: 0; }
 }
 .page-enter {
-  animation: page-enter 120ms ease-out;
+  animation: page-enter 80ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
   .page-enter { animation: none; }

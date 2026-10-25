@@ -1,6 +1,7 @@
 // Headless smoke test: opens every page as the role that uses it, fails on any runtime error,
 // and saves screenshots to e2e/shots/.   node e2e/smoke.js
 import { chromium } from "playwright-core";
+import { signIn } from "./session.js";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -8,14 +9,19 @@ const BASE = process.env.BASE || "http://localhost:5173";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 fs.mkdirSync(new URL("./shots/", import.meta.url), { recursive: true });
 
+// [path, account (null = signed out), screenshot]
 const pages = [
-  ["/", "donorPriya", "explore"],
-  ["/donate", "donorPriya", "donate"],
-  ["/passport", "donorPriya", "passport-list"],
-  ["/passport/0", "donorPriya", "passport-0"],
-  ["/ngo", "ngoAsha", "ngo"],
-  ["/vendor", "vendorWater", "vendor"],
-  ["/field", "fieldWorker", "field"],
+  ["/", null, "explore-public"],
+  ["/login", null, "login"],
+  ["/signup", null, "signup"],
+  ["/ngo", null, "ngo-signed-out"],
+  ["/", "priya", "explore"],
+  ["/donate", "priya", "donate"],
+  ["/passport", "priya", "passport-list"],
+  ["/passport/0", "priya", "passport-0"],
+  ["/ngo", "asha", "ngo"],
+  ["/vendor", "bluewell", "vendor"],
+  ["/field", "field", "field"],
   ["/watchtower", "watcher", "watchtower"],
 ];
 
@@ -24,17 +30,18 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, d
 let failures = 0;
 
 for (const [path, role, name] of pages) {
+  await ctx.clearCookies();
   const page = await ctx.newPage();
+  if (role) await signIn(page, BASE, role);
   const errors = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
-  await page.addInitScript((r) => localStorage.setItem("gv-role", r), role);
   await page.goto(BASE + path, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500); // let animations + live state settle
   await page.screenshot({ path: fileURLToPath(new URL(`./shots/${name}.png`, import.meta.url)), fullPage: true });
   const ok = errors.length === 0;
   if (!ok) failures++;
-  console.log(`${ok ? "ok  " : "FAIL"} ${path.padEnd(14)} as ${role}${ok ? "" : "\n     " + errors.slice(0, 4).join("\n     ")}`);
+  console.log(`${ok ? "ok  " : "FAIL"} ${path.padEnd(14)} as ${role ?? "guest"}${ok ? "" : "\n     " + errors.slice(0, 4).join("\n     ")}`);
   await page.close();
 }
 

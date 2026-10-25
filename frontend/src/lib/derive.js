@@ -3,11 +3,23 @@ import { ROLE_META, short } from "./chain";
 const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const rs = (wei) => `₹${fmt.format(Number(BigInt(wei ?? 0) / 10n ** 18n))}`;
 
-/// address → human label for known demo roles, else a short address.
+// Registered accounts (address → display name), refreshed by the store. Read at call time, so labels
+// pick up new sign-ups without re-creating labelers.
+const directory = new Map();
+export function setDirectory(list) {
+  directory.clear();
+  for (const a of list ?? []) directory.set(a.address.toLowerCase(), a.displayName);
+}
+
+/// address → account name (or the platform's own service roles), else a short address.
 export function labeler(config) {
-  const map = new Map();
-  for (const [role, r] of Object.entries(config?.roles ?? {})) if (ROLE_META[role]) map.set(r.address.toLowerCase(), ROLE_META[role].label);
-  return (addr) => (addr ? map.get(String(addr).toLowerCase()) ?? short(String(addr), 4) : "—");
+  const service = new Map();
+  for (const [role, r] of Object.entries(config?.roles ?? {})) if (ROLE_META[role]) service.set(r.address.toLowerCase(), ROLE_META[role].label);
+  return (addr) => {
+    if (!addr) return "—";
+    const k = String(addr).toLowerCase();
+    return directory.get(k) ?? service.get(k) ?? short(String(addr), 4);
+  };
 }
 
 /// Payouts that spent this lot, with this lot's share attached.

@@ -3,11 +3,6 @@ import { ethers } from "ethers";
 export const CATEGORIES = ["Water", "Medical", "Education"];
 export const CAT = { Water: 0, Medical: 1, Education: 2 };
 
-// Local Hardhat chains use the public dev mnemonic, so the role switcher can sign as any demo
-// participant without MetaMask. Every action is still a real signed transaction on-chain.
-const DEV_MNEMONIC = "test test test test test test test test test test test junk";
-export const devKey = (index) => ethers.HDNodeWallet.fromPhrase(DEV_MNEMONIC, undefined, `m/44'/60'/0'/0/${index}`).privateKey;
-
 export const ROLE_META = {
   donorPriya: { label: "Priya", kind: "Donor" },
   donorRahul: { label: "Rahul", kind: "Donor" },
@@ -30,21 +25,13 @@ export const fromWei = (v) => Number(ethers.formatUnits(v, 18));
 const POLL_MS = 200;
 
 export function makeChain(config) {
-  const poll = { staticNetwork: true, pollingInterval: config.pollingMs ?? POLL_MS };
+  // cacheTimeout -1: ethers caches identical RPC calls for 250ms by default, which hands a second
+  // transaction sent right after a confirmation the SAME pending nonce ("nonce too low").
+  const poll = { staticNetwork: true, pollingInterval: config.pollingMs ?? POLL_MS, cacheTimeout: -1 };
   const providerA = new ethers.JsonRpcProvider(config.rpcA, undefined, poll);
   const providerB = new ethers.JsonRpcProvider(config.rpcB, undefined, poll);
   const A = config.chainA;
   const B = config.chainB;
-
-  const signers = new Map();
-  /// Plain wallet per (role, chain): it asks the chain for the pending nonce on every send, so a
-  /// reverted estimate or the backend using the same key can never leave it stuck on a stale nonce.
-  /// Rapid clicks are serialized per role by `tx()` in the store.
-  function devSigner(role, chain = "A") {
-    const key = `${role}:${chain}`;
-    if (!signers.has(key)) signers.set(key, new ethers.Wallet(devKey(config.roles[role].index), chain === "A" ? providerA : providerB));
-    return signers.get(key);
-  }
 
   const contracts = (signer, signerB) => ({
     vault: new ethers.Contract(A.GlassVault.address, A.GlassVault.abi, signer ?? providerA),
@@ -89,7 +76,7 @@ export function makeChain(config) {
   const invoiceNullifier = (f) =>
     ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["address", "bytes32", "uint64", "uint256"], [f.vendor, ethers.id(f.invoiceNo), f.date, toWei(f.amount)]));
 
-  return { providerA, providerB, devSigner, contracts, signInvoice, recoverInvoiceSigner, typedInvoice, invoiceNullifier, A, B };
+  return { providerA, providerB, contracts, signInvoice, recoverInvoiceSigner, typedInvoice, invoiceNullifier, A, B };
 }
 
 /// Turns a revert into a readable reason using the contract's custom errors.
