@@ -7,6 +7,8 @@ import { Button, Card, Countdown, Empty, Rupees, RoleGate, Section, Segmented, S
 import { IconOrb } from "../components/ui/primitives";
 import { CategoryIcon, InvoiceIcon, ScaleIcon } from "../components/icons";
 import PreparePayout from "../components/ops/PreparePayout";
+import { Gauge, StackBar } from "../components/viz";
+import { inr } from "../lib/format";
 import { humanize, sameAddr, useApiList } from "../components/ops/shared";
 
 export default function Ngo() {
@@ -55,7 +57,30 @@ function Console() {
       </motion.section>
 
       <motion.div variants={fadeUp}>
-        <Section eyebrow="② Escrow condition" title="Category vaults">
+        <Section tour="ngo-health" eyebrow="Health at a glance" title="Trust and money in motion">
+          <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[240px_1fr]">
+            <Card className="grid place-items-center p-5">
+              <Gauge value={ngo.trust} bad={ngo.frozen} />
+            </Card>
+            <Card className="p-6">
+              <div className="mb-3 text-[15px] font-medium">Payout money by status</div>
+              <StackBar
+                format={inr}
+                parts={[
+                  { label: "Impact verified", value: payouts.filter((p) => p.status === "Completed").reduce((a, p) => a + p.amount, 0), tone: "deep" },
+                  { label: "Released, awaiting proof", value: payouts.filter((p) => p.status === "Released").reduce((a, p) => a + p.amount, 0), tone: "signal" },
+                  { label: "In challenge window", value: payouts.filter((p) => p.status === "Pending").reduce((a, p) => a + p.amount, 0), tone: "pending" },
+                  { label: "Disputed", value: payouts.filter((p) => p.status === "Challenged").reduce((a, p) => a + p.amount, 0), tone: "soft" },
+                  { label: "Cancelled", value: payouts.filter((p) => p.status === "Cancelled").reduce((a, p) => a + p.amount, 0), tone: "bad" },
+                ]}
+              />
+            </Card>
+          </div>
+        </Section>
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <Section tour="ngo-vaults" eyebrow="② Escrow condition" title="Category vaults">
           <div className="grid grid-cols-3 gap-4">
             {CATEGORIES.map((cat) => {
               const ls = lots.filter((l) => l.category === cat);
@@ -90,6 +115,7 @@ function Console() {
 
       <motion.div variants={fadeUp}>
         <Section
+          tour="ngo-invoices"
           eyebrow="③ Off-chain invoice proof"
           title="Vendor-signed invoices"
           action={
@@ -148,7 +174,7 @@ function Console() {
       </motion.div>
 
       <motion.div variants={fadeUp}>
-        <Section eyebrow="Payouts" title="Money in motion">
+        <Section tour="ngo-payouts" eyebrow="Payouts" title="Money in motion">
           {payouts.length === 0 ? <Empty>No payouts yet.</Empty> : <PayoutTable payouts={payouts} frozen={ngo.frozen} />}
         </Section>
       </motion.div>
@@ -244,7 +270,7 @@ function RegisterNgo() {
     }
   }
   return (
-    <Section eyebrow="Step 1 of your NGO account" title="Register your NGO on-chain">
+    <Section tour="ngo-register" eyebrow="Step 1 of your NGO account" title="Register your NGO on-chain">
       <Card className="max-w-[640px] p-8">
         <p className="text-[15px] text-ash">
           Registering locks a <span className="font-medium text-obsidian">₹10,000 bond</span> in the contract. Donors can then give to you; if fraud is ever proven

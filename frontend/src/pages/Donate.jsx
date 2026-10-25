@@ -7,6 +7,7 @@ import { CATEGORIES, CAT, toWei, fromWei } from "../lib/chain";
 import { fadeUp, liquid, stagger } from "../lib/motion";
 import { Section, Card, Button, Field, Input, Segmented, StatusBadge, Rupees, RoleGate } from "../components/ui/kit";
 import { IconOrb } from "../components/ui/primitives";
+import MoneyPath from "../components/viz/MoneyPath";
 import { CategoryIcon, BridgeIcon, VaultIcon, CheckIcon, HourglassIcon, RefundIcon, ShieldCheckIcon, QrIcon } from "../components/icons";
 
 export default function Donate() {
@@ -66,9 +67,13 @@ function DonateForm() {
 
   // the relayer could not deliver it (e.g. the NGO froze in between): stop waiting, say why
   useEffect(() => {
-    if (!relaying || relayer?.status !== "failed" || String(relayer.nonce) !== relaying.nonce) return;
+    if (!relaying || !["failed", "refunded"].includes(relayer?.status) || String(relayer.nonce) !== relaying.nonce) return;
     setRelaying(null);
-    toast({ title: "Bridge delivery failed", body: `${relayer.error}. The money stays locked in the bridge on chain B and is retried when the relayer restarts.`, tone: "error", ms: 10000 });
+    if (relayer.status === "refunded") {
+      toast({ title: "Donation refunded", body: `Chain A refused it (${relayer.reason}) — your dINR was returned to you on chain B.`, tone: "info", ms: 10000 });
+    } else {
+      toast({ title: "Bridge delivery failed", body: `${relayer.error}. The relayer retries when it restarts; if chain A refuses it, you are refunded on chain B.`, tone: "error", ms: 10000 });
+    }
   }, [relayer, relaying, toast]);
 
   const payEth = source === "B" && asset === "ETH" && !!c?.dexB;
@@ -146,7 +151,7 @@ function DonateForm() {
   return (
     <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_400px]">
       <div>
-        <Section eyebrow="Step 1" title="Choose an NGO">
+        <Section tour="donate-ngo" eyebrow="Step 1" title="Choose an NGO">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {state.ngos.map((n) => {
               const on = n.id === ngoId;
@@ -179,7 +184,7 @@ function DonateForm() {
           </div>
         </Section>
 
-        <Section eyebrow="Step 2" title="Purpose and amount">
+        <Section tour="donate-amount" eyebrow="Step 2" title="Purpose and amount">
           <div className="flex flex-col gap-6">
             <Segmented id="cat" value={category} onChange={setCategory} options={CATEGORIES.map((cname) => ({ value: cname, label: cname, icon: <CategoryIcon category={cname} size={16} /> }))} />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -246,7 +251,7 @@ function DonateForm() {
         </Section>
 
         {source === "A" && (
-          <Section eyebrow="Step 4" title="If this NGO is frozen or misses the deadline">
+          <Section tour="donate-fallback" eyebrow="Step 4" title="If this NGO is frozen or misses the deadline">
             <Segmented
               id="fallback"
               value={fallbackMode}
@@ -279,7 +284,11 @@ function DonateForm() {
       </div>
 
       <div className="lg:sticky lg:top-[112px] lg:self-start">
-        <Card className="p-6">
+        <Card data-tour="donate-summary" className="p-6">
+          <div className="mb-5">
+            <div className="mb-3 text-[13px] font-medium text-ash">Where your money goes</div>
+            <MoneyPath amount={amt} ngoName={ngo?.name} category={category} fallbackName={fallbackId === null ? null : state.ngos[fallbackId]?.name} />
+          </div>
           <div className="text-[13px] text-graphite">Escrow rules — enforced by the contract</div>
           <div className="mt-1 font-display text-[40px] leading-none font-normal">
             <Rupees value={amt || 0} />

@@ -38,6 +38,16 @@ export async function putFile(buffer, { name = "file", mime = "application/octet
   return db.files[fileHash];
 }
 
+/// Content type from the file's magic bytes — the client's declared type is never trusted.
+export function sniffMime(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0x89 && buf.toString("latin1", 1, 4) === "PNG") return "image/png";
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.toString("latin1", 0, 4) === "RIFF" && buf.toString("latin1", 8, 12) === "WEBP") return "image/webp";
+  if (buf.toString("latin1", 0, 5) === "%PDF-") return "application/pdf";
+  return null;
+}
+
 export function getFileByCid(cid) {
   const p = path.join(FILES_DIR, cid);
   if (!/^[a-z0-9]+$/i.test(cid) || !fs.existsSync(p)) return null;

@@ -8,8 +8,8 @@ import { WebSocketServer } from "ws";
 import { ethers } from "ethers";
 import { StandardMerkleTree } from "@openzeppelin/merkle-tree";
 import { chains, ROLES, roleKey, RELAYER_KEY, WATCHER_KEY, FAUCET_GAS_KEY, ROOT_DIR, RPC_A, RPC_B } from "./config.js";
-import { authRouter, sessionMiddleware } from "./auth.js";
-import { db, save, putFile, getFileByCid } from "./store.js";
+import { authRouter, sessionMiddleware, requireUser } from "./auth.js";
+import { db, save, putFile, getFileByCid, sniffMime } from "./store.js";
 import { Indexer } from "./indexer.js";
 import { FORMULA_VERSION } from "./confidence.js";
 import { Watcher } from "./watcher.js";
@@ -37,9 +37,20 @@ function broadcast(type, payload) {
 
 const indexer = new Indexer({ depA, depB, providerA, providerB });
 const watcher = new Watcher({ indexer, depA, providerA, key: WATCHER_KEY, broadcast });
-const relayer = new Relayer({ indexer, depA, depB, providerA, key: RELAYER_KEY, broadcast });
+const relayer = new Relayer({ indexer, depA, depB, providerA, providerB, key: RELAYER_KEY, broadcast });
 indexer.on("event", (ev) => broadcast("event", ev));
 indexer.on("state", (s) => broadcast("state", s));
+
+/// Our own seed/attack scripts call the API directly over loopback. Browser traffic always arrives
+/// through the dev/preview proxy, which adds X-Forwarded-For, so it can never take this path.
+const isLocalScript = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress) && !req.headers["x-forwarded-for"];
+const signedInOrScript = (req, res, next) => (req.user || isLocalScript(req) ? next() : res.status(401).json({ error: "Sign in first" }));
+const own = (obj, key) => Object.hasOwn(obj, key) ? obj[key] : undefined; // never resolve "__proto__" & co.
+
+/// Demo tooling (live red-team attack, benchmark) only exists on the local chains.
+const LOCAL_CHAINS = new Set([31337n, 31338n]);
+const localChains = Promise.all([providerA.getNetwork(), providerB.getNetwork()]).then(([a, b]) => LOCAL_CHAINS.has(a.chainId) && LOCAL_CHAINS.has(b.chainId));
+const localOnly = (req, res, next) => localChains.then((local) => (local ? next() : res.status(403).json({ error: "Only available on local chains" })), next);
 
 const ok = (res, data) => res.json(data);
 const bad = (res, msg, code = 400) => res.status(code).json({ error: msg });
@@ -52,7 +63,7 @@ app.get("/api/health", (_q, res) => ok(res, { ok: true, indexed: indexer.events.
 /// Everything the frontend needs to talk to the chains directly.
 app.get("/api/config", (_q, res) => {
   const roles = Object.fromEntries(Object.entries(ROLES).map(([role, index]) => [role, { index, address: new ethers.Wallet(roleKey(role)).address }]));
-  ok(res, { chainA: depA, chainB: depB, rpcA: RPC_A, rpcB: RPC_B, roles, categories: CATEGORY });
+  ok(res, { chainA: depA, chainB: depB, rpcA: RPC_A, rpcB: RPC_B, walletRpcA: RPC_A, walletRpcB: RPC_B, roles, categories: CATEGORY }); // walletRpc*: for MetaMask to add the chains
 });
 
 app.get("/api/state", (_q, res) => ok(res, indexer.state));
@@ -72,15 +83,25 @@ app.get("/api/passport/:lotId", (req, res) => {
 
 // ─────────────── content-addressed files (IPFS-compatible CIDs) ───────────────
 
-app.post("/api/files", upload.single("file"), wrap(async (req, res) => {
+/// Receipts only: the type comes from the file's own bytes (PNG/JPEG/WebP/PDF), never from the client.
+app.post("/api/files", signedInOrScript, upload.single("file"), wrap(async (req, res) => {
   if (!req.file) return bad(res, "file required");
-  ok(res, await putFile(req.file.buffer, { name: req.file.originalname, mime: req.file.mimetype }));
+  const mime = sniffMime(req.file.buffer);
+  if (!mime) return bad(res, "Only PNG, JPEG, WebP or PDF receipts can be uploaded", 415);
+  ok(res, await putFile(req.file.buffer, { name: String(req.file.originalname ?? "file").slice(0, 120), mime }));
 }));
 
+// Files are served from the app's own origin, so nothing stored here may ever run as a page: images and
+// JSON evidence render sandboxed and un-sniffable; anything else (PDFs, legacy uploads) downloads.
+const INLINE = /^(image\/(png|jpeg|webp)|application\/json)$/;
 app.get("/ipfs/:cid", (req, res) => {
   const f = getFileByCid(req.params.cid);
   if (!f) return bad(res, "not found", 404);
-  res.type(f.meta?.mime || "application/octet-stream").send(f.buffer);
+  const mime = f.meta?.mime ?? "";
+  res.set({ "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'" });
+  if (INLINE.test(mime)) return res.type(mime).send(f.buffer);
+  const name = String(f.meta?.name ?? req.params.cid).replace(/[^\w.-]/g, "_");
+  res.set("Content-Disposition", `attachment; filename="${name}"`).type("application/octet-stream").send(f.buffer);
 });
 
 // ─────────────── invoices: vendor issues + signs, NGO submits on-chain ───────────────
@@ -119,10 +140,19 @@ app.get("/api/invoices", (req, res) => {
   ok(res, list.sort((a, b) => b.id - a.id).map((i) => ({ ...i, cid: db.files[i.fileHash]?.cid ?? null })));
 });
 
-app.post("/api/invoices/:id/status", (req, res) => {
-  const inv = db.invoices[req.params.id];
+/// Only the invoice's vendor or the receiving NGO's admin may mark what happened to it on-chain.
+const INVOICE_STATUS = new Set(["submitted", "flagged"]);
+app.post("/api/invoices/:id/status", signedInOrScript, (req, res) => {
+  const inv = own(db.invoices, req.params.id);
   if (!inv) return bad(res, "unknown invoice", 404);
-  Object.assign(inv, { status: req.body.status, txHash: req.body.txHash ?? inv.txHash });
+  if (!INVOICE_STATUS.has(req.body?.status)) return bad(res, "status must be submitted or flagged");
+  if (req.user) {
+    const me = String(req.user.address).toLowerCase();
+    const admin = indexer.state?.ngos[inv.ngoId]?.admin?.toLowerCase();
+    if (me !== String(inv.vendor).toLowerCase() && me !== admin) return bad(res, "Only the vendor or the NGO can update this invoice", 403);
+  }
+  const txHash = req.body.txHash === undefined ? inv.txHash : /^0x[0-9a-fA-F]{64}$/.test(req.body.txHash) ? req.body.txHash : null;
+  Object.assign(inv, { status: req.body.status, txHash });
   save();
   ok(res, inv);
 });
@@ -153,7 +183,7 @@ app.post("/api/beneficiaries", (req, res) => {
 
 /// Public tree (card addresses only) — the field app computes Merkle proofs in the browser.
 app.get("/api/beneficiaries/:root", (req, res) => {
-  const t = db.beneficiaryTrees[req.params.root];
+  const t = own(db.beneficiaryTrees, req.params.root);
   return t ? ok(res, { root: t.root, count: t.count, label: t.label, dump: t.dump }) : bad(res, "unknown root", 404);
 });
 
@@ -172,7 +202,7 @@ app.post("/api/reconcile", (req, res) => {
 // ─────────────── red team: live attack steps + isolated benchmark ───────────────
 
 let attackBusy = false;
-app.post("/api/demo/attack/:step", wrap(async (req, res) => {
+app.post("/api/demo/attack/:step", localOnly, requireUser, wrap(async (req, res) => {
   if (attackBusy) return bad(res, "attack step already running", 409);
   attackBusy = true;
   try {
@@ -186,8 +216,8 @@ app.post("/api/demo/attack/:step", wrap(async (req, res) => {
 }));
 
 let benchmarkRun = null;
-app.post("/api/demo/benchmark", (_q, res) => {
-  if (benchmarkRun) return ok(res, { status: "running" });
+app.post("/api/demo/benchmark", localOnly, requireUser, (_q, res) => {
+  if (benchmarkRun) return ok(res, { status: "running" }); // one run at a time
   broadcast("benchmark", { status: "running" });
   benchmarkRun = new Promise((resolve) => {
     const child = spawn("npx", ["hardhat", "run", "scripts/benchmark.js"], { cwd: path.join(ROOT_DIR, "contracts"), env: { ...process.env, BENCH_JSON: "1" }, shell: true });

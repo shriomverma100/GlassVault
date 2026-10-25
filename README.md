@@ -19,11 +19,12 @@ role is a funded wallet on the local chain and every action is a real signed tra
 
 | Command | What it does |
 |---|---|
+| `npm run acceptance` | **Problem-statement acceptance suite**: every PS 4.2 requirement checked on real contract execution (12/12), prints requirement → evidence → PASS |
 | `npm test` | 60 contract tests (happy path + every attack) |
 | `npm run benchmark` | 100 receipts, 30% fraudulent, against fresh contracts on an isolated chain |
 | `npm run attack` | Live red-team attack on the running chain (also available as buttons in Watchtower) |
 | `npm run e2e` / `npm run e2e:attack` | Headless browser tests that drive the real UI |
-| `npm run check` | Contract tests + benchmark + lint + production build — must pass before every merge |
+| `npm run check` | Contract tests + acceptance suite (incl. benchmark) + lint + production build — must pass before every merge |
 | `npm run confidence` | Re-runs the probabilistic evaluation chain from public state and checks every published score |
 | `npm run perf` | UI responsiveness probe (page-switch latency, scroll settle, dropped frames) against the running app, compared to `e2e/perf-baseline.json` |
 
@@ -111,7 +112,8 @@ chain B :8546 ── DINR · BridgeGateway                     ├ relayer   —
 - **Fiat off-ramp trust.** The chain can't see a bank account, so a rupee payment is proven by the staked agent's signature. Reusing a bank reference is caught, an unsettled payout is flagged and the agent's stake slashed — but an agent willing to lose its stake could sign a fake UTR once. Production: a bank/UPI webhook signature or a zkTLS proof of the bank statement.
 - **DEX rate is fixed** (local stand-in); production swaps through a real pool, which the tracer reads the same way.
 - **Local chains.** Two Hardhat nodes stand in for two real networks; demo roles use the public Hardhat dev mnemonic.
-- **Bridge relayer is one trusted key.** Replays are blocked on-chain; production would use a light client or Chainlink CCIP. A failed delivery has no refund path on the source chain yet.
+- **Bridge relayer is one trusted key.** Replays are blocked on-chain, and a donation chain A refuses (NGO frozen, deadline too close) is refunded to the donor on chain B; production would use a light client or Chainlink CCIP instead of trusting the relayer.
+- **Card-list squatting.** Card lists are keyed by their Merkle root, first attestation wins; a staked rogue partner who front-runs an honest partner's attestation can block that list (the honest partner re-issues). Production: key lists by (partner, root).
 - **Field partner honesty.** Cards and card lists come from a staked field partner independent of the NGO, but a partner colluding with an NGO could still issue cards to fake beneficiaries. Production: several partners per region, random audits, and slashing the partner when a challenge on its payout is upheld.
 - **Repeat beneficiaries.** Each payout gets its own card list, so the same person's deliveries are not linkable across payouts unless a partner reuses a card. Full unlinkability with reusable cards needs zero-knowledge membership proofs (e.g. Semaphore).
 - **Sybil voting.** An NGO could donate to itself from another wallet to outvote donors on a challenge. Quorum makes it harder; a per-lot veto is the proper fix.

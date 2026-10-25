@@ -34,9 +34,14 @@ db.exec(`
     expires_at INTEGER NOT NULL
   );
 `);
+// v2: wallet type. MetaMask accounts have no password and no keystore (stored as '' — the columns
+// predate them and SQLite can't relax NOT NULL in place); password login can never match ''.
+if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "wallet")) {
+  db.exec("ALTER TABLE users ADD COLUMN wallet TEXT NOT NULL DEFAULT 'keystore'");
+}
 
 const publicUser = (row) =>
-  row && { id: row.id, username: row.username, kind: row.kind, displayName: row.display_name, address: row.address, createdAt: row.created_at };
+  row && { id: row.id, username: row.username, kind: row.kind, displayName: row.display_name, address: row.address, wallet: row.wallet ?? "keystore", createdAt: row.created_at };
 
 // ── passwords ──
 export async function hashPassword(password) {
@@ -58,16 +63,24 @@ let dummyHash;
 export const dummyPasswordHash = async () => (dummyHash ??= await hashPassword(randomBytes(16).toString("hex")));
 
 // ── validation ──
-export function validateSignup(body) {
+/// Username / role / display name — shared by password and MetaMask sign-up.
+export function validateProfile(body) {
   const username = String(body?.username ?? "").trim().toLowerCase();
-  const password = String(body?.password ?? "");
   const kind = String(body?.kind ?? "");
   const displayName = String(body?.displayName ?? "").trim();
-  const keystore = String(body?.keystore ?? "");
   if (!/^[a-z0-9_.-]{3,32}$/.test(username)) return { error: "Username must be 3–32 characters: a–z, 0–9, dot, dash or underscore" };
-  if (password.length < 8 || password.length > 128) return { error: "Password must be 8–128 characters" };
   if (!KINDS.includes(kind)) return { error: `Role must be one of ${KINDS.join(", ")}` };
   if (displayName.length < 1 || displayName.length > 60) return { error: "Display name must be 1–60 characters" };
+  return { username, kind, displayName };
+}
+
+export function validateSignup(body) {
+  const profile = validateProfile(body);
+  if (profile.error) return profile;
+  const { username, kind, displayName } = profile;
+  const password = String(body?.password ?? "");
+  const keystore = String(body?.keystore ?? "");
+  if (password.length < 8 || password.length > 128) return { error: "Password must be 8–128 characters" };
   let address;
   try {
     address = ethers.getAddress(String(body?.address ?? ""));
@@ -89,6 +102,7 @@ export function validateSignup(body) {
 // ── users ──
 export const userByUsername = (username) => db.prepare("SELECT * FROM users WHERE username = ?").get(String(username).toLowerCase());
 export const userById = (id) => db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+export const userByAddress = (address) => db.prepare("SELECT * FROM users WHERE address = ?").get(ethers.getAddress(address));
 
 /// Creates an account. Returns { user } or { error, status }.
 export async function createAccount({ username, password, kind, displayName, address, keystore }) {
@@ -99,6 +113,21 @@ export async function createAccount({ username, password, kind, displayName, add
     const r = db
       .prepare("INSERT INTO users (username, password_hash, kind, display_name, address, keystore, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(username, passwordHash, kind, displayName, address, keystore, Date.now());
+    return { user: publicUser(userById(Number(r.lastInsertRowid))) };
+  } catch (e) {
+    if (String(e.message).includes("UNIQUE")) return { error: "Username or wallet already taken", status: 409 };
+    throw e;
+  }
+}
+
+/// MetaMask account: the wallet lives in the user's MetaMask, so no password and no keystore here.
+export function createMetaMaskAccount({ username, kind, displayName, address }) {
+  if (userByUsername(username)) return { error: "Username already taken", status: 409 };
+  if (db.prepare("SELECT 1 FROM users WHERE address = ?").get(address)) return { error: "This wallet already has an account", status: 409 };
+  try {
+    const r = db
+      .prepare("INSERT INTO users (username, password_hash, kind, display_name, address, keystore, wallet, created_at) VALUES (?, '', ?, ?, ?, '', 'metamask', ?)")
+      .run(username, kind, displayName, address, Date.now());
     return { user: publicUser(userById(Number(r.lastInsertRowid))) };
   } catch (e) {
     if (String(e.message).includes("UNIQUE")) return { error: "Username or wallet already taken", status: 409 };

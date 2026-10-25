@@ -4,6 +4,7 @@ import { api } from "./api";
 import { makeChain, reason } from "./chain";
 import { setDirectory } from "./derive";
 import { createWallet, unlockWallet } from "./wallet";
+import * as mm from "./metamask";
 
 /// Global app state: config, live chain state over WebSocket, the acting role (signer), toasts,
 /// and a `tx()` helper that runs a transaction with pending/success/error feedback.
@@ -21,7 +22,7 @@ let snap = {
   relayer: null, // latest bridge relayer status: delivered | failed
   frozenAlert: null,
   authReady: false, // true once we know whether a session exists
-  user: null, // { id, username, kind, displayName, address }
+  user: null, // { id, username, kind, displayName, address, wallet: "keystore" | "metamask" }
   keystore: null, // encrypted wallet JSON (from the server, decryptable only with the password)
   wallet: null, // unlocked ethers.Wallet — memory only, gone on reload/logout
   unlockRequest: null, // pending "enter your password to sign" prompt
@@ -53,13 +54,17 @@ class AccountSigner extends ethers.AbstractSigner {
     return this.address;
   }
   async #wallet() {
+    if (snap.user?.wallet === "metamask") return metaMaskSigner(this.address, this.provider);
     return (await requireWallet()).connect(this.provider);
   }
   async signTransaction(tx) {
     return (await this.#wallet()).signTransaction(tx);
   }
   async sendTransaction(tx) {
-    return (await this.#wallet()).sendTransaction(tx);
+    const sent = await (await this.#wallet()).sendTransaction(tx);
+    // follow the receipt on our own provider (fast local polling), not through the wallet
+    if (snap.user?.wallet === "metamask") return (await this.provider.getTransaction(sent.hash).catch(() => null)) ?? sent;
+    return sent;
   }
   async signMessage(m) {
     return (await this.#wallet()).signMessage(m);
@@ -75,6 +80,17 @@ function identity(chain, user) {
   if (!user) return { address: null, signer: null, c: chain.contracts() };
   const signer = new AccountSigner(user.address, chain.providerA);
   return { address: user.address, signer, c: chain.contracts(signer, signer.connect(chain.providerB)) };
+}
+
+/// MetaMask signer for the chain this signer's provider points at: switches MetaMask to that chain
+/// (adding it if needed) and refuses to sign from a different account than the signed-in one.
+async function metaMaskSigner(address, provider) {
+  const wallet = await mm.requireWallet();
+  const chains = mm.chainSpecs(snap.config);
+  await mm.ensureChain(wallet, provider === snap.chain?.providerB ? chains.B : chains.A);
+  const selected = await mm.selectedAccount(wallet);
+  if (!selected || selected.toLowerCase() !== address.toLowerCase()) throw new Error(`Switch MetaMask to your GlassVault account ${address}`);
+  return new ethers.BrowserProvider(wallet).getSigner(address);
 }
 
 function requireWallet() {
@@ -97,6 +113,45 @@ const loadDirectory = () => api.get("/api/directory").then(setDirectory).catch((
 
 function signedIn(user, keystore, wallet) {
   set((s) => ({ user, keystore, wallet, unlockRequest: null, ...identity(s.chain, user) }));
+  if (user?.wallet === "metamask") watchMetaMask();
+}
+
+// Warn when MetaMask switches away from the signed-in account (signing would then be refused).
+let watching = false;
+async function watchMetaMask() {
+  if (watching) return;
+  const w = await mm.discoverWallet().catch(() => null);
+  if (!w?.provider?.on) return;
+  watching = true;
+  w.provider.on("accountsChanged", (accounts) => {
+    const u = snap.user;
+    if (u?.wallet === "metamask" && accounts[0]?.toLowerCase() !== u.address.toLowerCase()) {
+      toast({ title: "MetaMask account changed", body: `Switch back to ${u.address.slice(0, 8)}… to sign as ${u.displayName}.`, tone: "error", ms: 8000 });
+    }
+  });
+}
+
+/// Sign-In with Ethereum: MetaMask signs a one-time EIP-4361 message. Returns the user, or
+/// { needsSignup, signupToken, address } when this wallet has no account yet.
+async function loginWithMetaMask() {
+  const wallet = await mm.requireWallet();
+  const address = ethers.getAddress(await mm.connect());
+  const chainA = mm.chainSpecs(snap.config).A;
+  await mm.ensureChain(wallet, chainA);
+  const { nonce } = await api.get("/api/auth/siwe/nonce");
+  const message = mm.siweMessage({ domain: location.host, address, uri: location.origin, chainId: chainA.chainId, nonce });
+  const signature = await (await new ethers.BrowserProvider(wallet).getSigner(address)).signMessage(message);
+  const out = await api.post("/api/auth/siwe", { message, signature });
+  if (out.needsSignup) return out;
+  signedIn(out.user, null, null);
+  return { user: out.user };
+}
+
+async function signupWithMetaMask({ signupToken, username, kind, displayName }) {
+  const { user } = await api.post("/api/auth/siwe/signup", { signupToken, username: username.trim().toLowerCase(), kind, displayName: displayName.trim() });
+  signedIn(user, null, null);
+  loadDirectory();
+  return user;
 }
 
 async function login(username, password) {
@@ -162,6 +217,8 @@ const actions = {
   tx,
   login,
   signup,
+  loginWithMetaMask,
+  signupWithMetaMask,
   logout,
   unlock,
   cancelUnlock,

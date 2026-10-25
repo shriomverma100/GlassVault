@@ -12,6 +12,7 @@ import { Button, Card, Drawer, Empty, Field as FormField, HashText, Input, Rupee
 import { IconOrb } from "../components/ui/primitives";
 import { CategoryIcon, CheckIcon, QrIcon } from "../components/icons";
 import { ProgressRing, QrCards, sameAddr } from "../components/ops/shared";
+import { Ring } from "../components/viz";
 
 export default function Field() {
   return (
@@ -39,10 +40,27 @@ function Workspace() {
         </p>
       </motion.section>
 
-      <motion.div variants={fadeUp}>{partner?.registered ? <IssueCards partner={partner} /> : <RegisterPartner slashed={!!partner && !partner.registered} />}</motion.div>
+      {state.payouts.some((p) => p.status !== "Cancelled") && (
+        <motion.div variants={fadeUp}>
+          <Section tour="field-progress" eyebrow="Proof of delivery" title="Handovers confirmed, per payout">
+            <div className="flex flex-wrap gap-6">
+              {state.payouts
+                .filter((p) => p.status !== "Cancelled")
+                .slice(-10)
+                .map((p) => (
+                  <Ring key={p.id} value={p.deliveries} max={p.deliveriesRequired} label={`#${p.id} · ${state.ngos[p.ngoId]?.name ?? "NGO"}`} />
+                ))}
+            </div>
+          </Section>
+        </motion.div>
+      )}
+
+      <motion.div variants={fadeUp} data-tour="field-cards">
+        {partner?.registered ? <IssueCards partner={partner} /> : <RegisterPartner slashed={!!partner && !partner.registered} />}
+      </motion.div>
 
       <motion.div variants={fadeUp}>
-        <Section eyebrow="Confirm a delivery · step 1" title="Which delivery?">
+        <Section tour="field-confirm" eyebrow="Confirm a delivery · step 1" title="Which delivery?">
           {open.length === 0 ? (
             <Empty>No payouts are waiting for beneficiary confirmations.</Empty>
           ) : (

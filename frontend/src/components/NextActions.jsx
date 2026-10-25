@@ -15,7 +15,7 @@ export default function NextActions() {
   const tasks = TASKS[user.kind]?.(state, user.address, chainNow(), { invoices }) ?? [];
 
   return (
-    <section aria-label="Next actions" className="mt-8 rounded-[var(--radius-tile)] border border-hairline bg-white px-6 py-4">
+    <section data-tour="next-actions" aria-label="Next actions" className="mt-8 rounded-[var(--radius-tile)] border border-hairline bg-white px-6 py-4">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <span className="text-[13px] font-medium text-ash">{tasks.length ? "Next for you" : "You're all caught up"}</span>
         {tasks.slice(0, 4).map((t) => (

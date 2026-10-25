@@ -28,9 +28,19 @@ contract BridgeGateway is ReentrancyGuard {
     IGlassVault public vault; // set on the destination chain only
     uint256 public nonce;
     mapping(bytes32 => bool) public delivered;
+    /// @notice Source side: what each nonce locked, so an undeliverable donation can be refunded.
+    struct Sent {
+        address donor;
+        uint256 amount;
+        bool refunded;
+    }
+    mapping(uint256 => Sent) public sent;
+    /// @notice Destination lots need a proof period; leave margin for the relay.
+    uint64 public constant MIN_SOURCE_PERIOD = 2 hours;
 
     event DonationSent(uint256 indexed nonce, address indexed donor, uint256 ngoId, uint8 category, uint256 amount, uint64 deadline, uint64 destChain);
     event DonationDelivered(uint64 indexed sourceChain, uint256 indexed nonce, uint256 lotId);
+    event DonationRefunded(uint256 indexed nonce, address indexed donor, uint256 amount);
     /// @notice The swap hop of a multi-hop donation: links the original asset to the bridged tag.
     event DonationSwapped(uint256 indexed nonce, address indexed donor, address dex, uint256 ethIn, uint256 dinrOut);
 
@@ -38,6 +48,8 @@ contract BridgeGateway is ReentrancyGuard {
     error AlreadyDelivered();
     error VaultAlreadySet();
     error Slippage();
+    error BadDonation();
+    error NotRefundable();
 
     constructor(IERC20 token_, address relayer_) {
         token = token_;
@@ -52,7 +64,9 @@ contract BridgeGateway is ReentrancyGuard {
     }
 
     function sendDonation(uint256 ngoId, uint8 category, uint256 amount, uint64 deadline, uint64 destChain) external nonReentrant {
+        if (amount == 0 || deadline < block.timestamp + MIN_SOURCE_PERIOD) revert BadDonation();
         uint256 n = nonce++;
+        sent[n] = Sent({donor: msg.sender, amount: amount, refunded: false});
         emit DonationSent(n, msg.sender, ngoId, category, amount, deadline, destChain);
         token.safeTransferFrom(msg.sender, address(this), amount);
     }
@@ -69,9 +83,22 @@ contract BridgeGateway is ReentrancyGuard {
         IDex(dex).swapExactETHForDINR{value: msg.value}(minOut, address(this));
         uint256 amount = token.balanceOf(address(this)) - before;
         if (amount < minOut || amount == 0) revert Slippage();
+        if (deadline < block.timestamp + MIN_SOURCE_PERIOD) revert BadDonation();
         uint256 n = nonce++;
+        sent[n] = Sent({donor: msg.sender, amount: amount, refunded: false});
         emit DonationSwapped(n, msg.sender, dex, msg.value, amount);
         emit DonationSent(n, msg.sender, ngoId, category, amount, deadline, destChain);
+    }
+
+    /// @notice Source side: the relayer reports that the destination rejected nonce `n` (NGO frozen,
+    ///         deadline too close) and the locked dINR goes back to the donor. Once only.
+    function refundFailed(uint256 n) external nonReentrant {
+        if (msg.sender != relayer) revert OnlyRelayer();
+        Sent storage s = sent[n];
+        if (s.donor == address(0) || s.refunded) revert NotRefundable();
+        s.refunded = true;
+        emit DonationRefunded(n, s.donor, s.amount);
+        token.safeTransfer(s.donor, s.amount);
     }
 
     function deliverDonation(

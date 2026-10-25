@@ -14,7 +14,8 @@
     "deploy:a": "hardhat run scripts/deploy.js --network chainA",
     "deploy:b": "hardhat run scripts/deploy.js --network chainB",
     "deploy": "hardhat run scripts/deploy.js --network chainA && hardhat run scripts/deploy.js --network chainB",
-    "benchmark": "hardhat run scripts/benchmark.js"
+    "benchmark": "hardhat run scripts/benchmark.js",
+    "acceptance": "hardhat run scripts/acceptance.js"
   },
   "keywords": [],
   "author": "",

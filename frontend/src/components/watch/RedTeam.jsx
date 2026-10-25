@@ -26,7 +26,7 @@ const KIND_LABEL = {
 
 /// Live red-team attack on the dashboard chain + the isolated 100-receipt benchmark.
 export default function RedTeam() {
-  const { benchmark, setBenchmark, toast } = useApp("benchmark", "setBenchmark", "toast");
+  const { benchmark, setBenchmark, toast, user } = useApp("benchmark", "setBenchmark", "toast", "user");
   const [running, setRunning] = useState(null);
   const [notes, setNotes] = useState({});
 
@@ -75,7 +75,7 @@ export default function RedTeam() {
                         <div className="text-[14px] font-medium">{s.label}</div>
                         <div className="text-[13px] text-graphite">{s.text}</div>
                       </div>
-                      <Button variant="ghost" className="h-9 shrink-0 px-4" disabled={!!running} onClick={() => runStep(s.key)}>
+                      <Button variant="ghost" className="h-9 shrink-0 px-4" disabled={!!running || !user} title={user ? undefined : "Sign in to run the red team"} onClick={() => runStep(s.key)}>
                         <PlayIcon width={14} height={14} />
                         Run
                       </Button>
@@ -97,7 +97,7 @@ export default function RedTeam() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div className="text-[13px] text-graphite">100 receipts · 30% fraudulent · fresh contracts on an isolated chain</div>
-            <Button variant="signal" disabled={benchmark?.status === "running"} onClick={runBenchmark}>
+            <Button variant="signal" disabled={benchmark?.status === "running" || !user} title={user ? undefined : "Sign in to run the benchmark"} onClick={runBenchmark}>
               {benchmark?.status === "running" ? <Spinner /> : <BeakerIcon width={16} height={16} />}
               {benchmark?.status === "running" ? "Running…" : "Run 100-receipt benchmark"}
             </Button>

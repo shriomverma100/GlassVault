@@ -143,6 +143,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
     uint256 public constant FIELD_STAKE = 2_000 ether;
     /// @notice An invoice may predate the donations it charges by at most this (reimbursement window).
     uint64 public constant INVOICE_GRACE = 7 days;
+    /// @notice Lots one payout may charge — bounds the per-share loops (Proof-of-Impact mints) under the block gas limit.
+    uint256 public constant MAX_SHARES = 16;
     uint256 public constant CHALLENGE_BOND = 500 ether;
 
     // ─────────────────────────── state ───────────────────────────
@@ -241,6 +243,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
     error BadFallback();
     error NotRedirectable();
     error ImpactOpen();
+    error BadShares();
 
     constructor(IERC20 token_, uint64 challengeWindow_, address bridgeGateway_) EIP712("GlassVault", "1") {
         token = token_;
@@ -429,8 +432,10 @@ contract GlassVault is EIP712, ReentrancyGuard {
         if (inv.date > block.timestamp + 1 days) return _flag(inv.ngoId, FraudReason.ImpossibleTimeline, nullifier, inv.fileHash);
 
         // ② escrow conditions on every charged lot
+        if (shares.length == 0 || shares.length > MAX_SHARES) revert BadShares();
         uint256 total;
         for (uint256 i; i < shares.length; ++i) {
+            if (shares[i].amount == 0) revert BadShares();
             Lot storage l = _lots[shares[i].lotId];
             // expired lots belong to the donor's reclaim right — revert, don't flag (prevents reclaim front-run griefing)
             if (block.timestamp > l.deadline) revert LotExpired();
@@ -552,7 +557,11 @@ contract GlassVault is EIP712, ReentrancyGuard {
         if (f.paidAt < releasedAt[f.payoutId] || f.paidAt > block.timestamp) revert BadSettlement();
 
         if (bankRefUsed[f.bankRefHash]) {
-            _flag(p.ngoId, FraudReason.DuplicateFiatProof, f.bankRefHash, p.fileHash);
+            // the agent signed a bank transfer that already proves another payout: the agent is slashed
+            // (stake → whoever submitted the evidence) and the unpaid 30% returns to the donors. Recorded
+            // against the NGO as a discrepancy only, so a rogue agent can't freeze an honest NGO.
+            _discrepancy(p.ngoId, FraudReason.DuplicateFiatProof, f.bankRefHash, p.fileHash);
+            _slashAgent(f.payoutId, p);
             return false;
         }
         bankRefUsed[f.bankRefHash] = true;
@@ -570,16 +579,28 @@ contract GlassVault is EIP712, ReentrancyGuard {
         if (!vendors[p.vendor].offRamp) revert NotOffRamp();
         if (p.status != PayoutStatus.Released || fiatProof[payoutId] != 0) revert BadPayout();
         if (block.timestamp <= fiatDeadline(payoutId)) revert SettlementOpen();
+        _flag(p.ngoId, FraudReason.UnexplainedTransfer, p.nullifier, p.fileHash);
+        _slashAgent(payoutId, p);
+    }
 
+    /// @dev An off-ramp agent that took the 70% and never proved the rupee payment (or proved it with a
+    ///      reused bank transfer) loses its stake to the caller and is banned; the unpaid part returns to
+    ///      the donors. Every path that closes such a payout goes through here, so there is no exit
+    ///      (freeze, impact timeout) that lets the agent keep both the money and its stake.
+    function _slashAgent(uint256 payoutId, Payout storage p) internal {
         Vendor storage v = vendors[p.vendor];
         uint256 reward = v.stake;
         v.stake = 0;
         v.registered = false;
         v.slashed = true;
         _unwind(payoutId, p);
-        _flag(p.ngoId, FraudReason.UnexplainedTransfer, p.nullifier, p.fileHash);
         emit UnexplainedTransfer(payoutId, p.vendor, msg.sender, reward);
         if (reward > 0) token.safeTransfer(msg.sender, reward);
+    }
+
+    /// @dev Released to an off-ramp agent and not yet proven paid in rupees.
+    function _fiatUnproven(uint256 payoutId, Payout storage p) internal view returns (bool) {
+        return p.status == PayoutStatus.Released && vendors[p.vendor].offRamp && fiatProof[payoutId] == 0;
     }
 
     /// @notice Deadline to prove impact (deliveries, and fiat for off-ramp payouts) after the 70% release.
@@ -596,7 +617,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
         if (p.status != PayoutStatus.Released || _impactProven(payoutId, p)) revert BadPayout();
         if (block.timestamp <= impactDeadline(payoutId)) revert ImpactOpen();
         uint256 returned = p.amount - p.paid;
-        _unwind(payoutId, p);
+        if (_fiatUnproven(payoutId, p)) _slashAgent(payoutId, p); // the rupee payment was never proven either
+        else _unwind(payoutId, p);
         emit ImpactExpired(payoutId, returned);
         _discrepancy(p.ngoId, FraudReason.ImpactNotProven, p.nullifier, p.fileHash);
     }
@@ -697,7 +719,13 @@ contract GlassVault is EIP712, ReentrancyGuard {
         if (!_ngos[p.ngoId].frozen) revert BadPayout();
         // Challenged payouts must go through resolve() first so the challenger's bond is settled.
         if (p.status != PayoutStatus.Pending && p.status != PayoutStatus.Released) revert BadPayout();
-        _unwind(payoutId, p);
+        if (_fiatUnproven(payoutId, p)) {
+            // the agent still has its settlement window; after it, closing the payout slashes the agent
+            if (block.timestamp <= fiatDeadline(payoutId)) revert SettlementOpen();
+            _slashAgent(payoutId, p);
+        } else {
+            _unwind(payoutId, p);
+        }
     }
 
     /// @notice Donor takes back unspent money if the NGO is frozen or missed the proof deadline.

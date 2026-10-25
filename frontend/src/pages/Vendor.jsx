@@ -9,6 +9,8 @@ import { Button, Card, Countdown, Empty, Field, HashText, Input, KV, Rupees, Rol
 import { IconOrb } from "../components/ui/primitives";
 import { CategoryIcon, CrossIcon, InvoiceIcon, UploadIcon } from "../components/icons";
 import { sameAddr, useApiList } from "../components/ops/shared";
+import { SplitBars } from "../components/viz";
+import { inr } from "../lib/format";
 
 export default function Vendor() {
   return (
@@ -53,10 +55,29 @@ function Portal() {
         </motion.div>
       )}
 
-      <motion.div variants={fadeUp}>{me?.registered ? <IssueInvoice vendor={me} onIssued={reload} /> : <Register />}</motion.div>
+      {payouts.length > 0 && (
+        <motion.div variants={fadeUp}>
+          <Section tour="vendor-earnings" eyebrow="Earnings" title="Paid vs still in escrow, per payout">
+            <Card className="p-6">
+              <SplitBars
+                format={inr}
+                aLabel="Paid to you"
+                bLabel="Still in escrow (released on proof)"
+                rows={payouts
+                  .filter((p) => p.status !== "Cancelled")
+                  .map((p) => ({ key: p.id, label: `Payout #${p.id} · ${p.status.toLowerCase()}`, a: p.paid, b: p.amount - p.paid, marker: p.offRamp ? (p.fiat ? "paid in rupees" : "rupee proof due") : null }))}
+              />
+            </Card>
+          </Section>
+        </motion.div>
+      )}
+
+      <motion.div variants={fadeUp} data-tour="vendor-main">
+        {me?.registered ? <IssueInvoice vendor={me} onIssued={reload} /> : <Register />}
+      </motion.div>
 
       <motion.div variants={fadeUp}>
-        <Section eyebrow="History" title="My invoices and payments">
+        <Section tour="vendor-history" eyebrow="History" title="My invoices and payments">
           {invoices.length === 0 ? (
             <Empty>No invoices issued yet.</Empty>
           ) : (
@@ -257,7 +278,7 @@ function IssueInvoice({ vendor, onIssued }) {
               <div className="text-[14px] font-medium">{file ? file.name : "Attach receipt photo or PDF"}</div>
               <div className="text-[13px] text-graphite">{file ? <>CID <span className="font-mono">{file.cid.slice(0, 18)}…</span></> : "Stored content-addressed; its hash is what you sign"}</div>
             </div>
-            <input type="file" accept="image/*,application/pdf" className="hidden" onChange={onFile} />
+            <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="hidden" onChange={onFile} />
           </label>
         </Card>
 
@@ -291,7 +312,7 @@ function SettleFiat({ payouts }) {
   const due = payouts.filter((p) => p.status === "Released" && !p.fiat);
   const settled = payouts.filter((p) => p.fiat);
   return (
-    <Section eyebrow="Fiat off-ramp" title="Settle payouts in rupees">
+    <Section tour="vendor-settle" eyebrow="Fiat off-ramp" title="Settle payouts in rupees">
       <p className="mb-5 max-w-[720px] text-[14px] text-ash">
         You paid the local shop in rupees. Signing this record links that bank transfer to the on-chain payout, so donors can see their money reached the real world.
         Only hashes of the bank reference and payee go on-chain, and a bank reference can be used only once.

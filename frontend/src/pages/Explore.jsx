@@ -8,6 +8,8 @@ import { KpiStat, IconOrb } from "../components/ui/primitives";
 import { Section, Card, StatusBadge, Rupees, Button } from "../components/ui/kit";
 import { inrCompact, inrUnitFor, pct } from "../lib/format";
 import ProofSpine from "../components/ProofSpine";
+import { CountUp, Funnel, HBars } from "../components/viz";
+import { fraudByReason, pipeline } from "../components/viz/data";
 import SankeyFlow from "../components/explore/SankeyFlow";
 import { ScaleIcon, VaultIcon, FingerprintIcon, InvoiceIcon, QrIcon, CrossIcon, CheckIcon } from "../components/icons";
 
@@ -24,9 +26,12 @@ export default function Explore() {
   const label = useMemo(() => labeler(config), [config]);
   // one unit for the whole money row, so "₹3.0 L" never sits next to "₹40,000"
   const unit = inrUnitFor(s.tracked, s.inEscrow, s.paidOut);
-  const tracked = inrCompact(s.tracked, unit);
-  const escrow = inrCompact(s.inEscrow, unit);
-  const paid = inrCompact(s.paidOut, unit);
+  // KPIs count up on arrival (≤600ms, instant with reduced motion)
+  const money = (v) => ({ value: <CountUp value={v} format={(x) => inrCompact(x, unit).value} />, unit: inrCompact(v, unit).unit });
+  const tracked = money(s.tracked);
+  const escrow = money(s.inEscrow);
+  const paid = money(s.paidOut);
+  const fmtInr = (v) => inrCompact(v).value + (inrCompact(v).unit ? ` ${inrCompact(v).unit}` : "");
 
   return (
     <motion.div variants={stagger()} initial="hidden" animate="show">
@@ -38,13 +43,13 @@ export default function Explore() {
             Money moves only when proof moves. Each rupee below is held by a contract, released against a vendor-signed invoice, and finished only when beneficiaries prove delivery.
           </p>
         </div>
-        <div className="flex flex-wrap gap-x-14 gap-y-6">
+        <div data-tour="explore-kpis" className="flex flex-wrap gap-x-14 gap-y-6">
           <KpiStat label="Tracked" {...tracked} />
           <KpiStat label="In escrow" {...escrow} />
           <KpiStat label="Paid out" {...paid} />
-          <KpiStat label="Proofs" value={s.proofs.toLocaleString("en-IN")} />
-          <KpiStat label="Verified" value={s.verifiedPct} unit="%" />
-          <KpiStat label="Frauds caught" value={s.fraudsCaught} />
+          <KpiStat label="Proofs" value={<CountUp value={s.proofs} />} />
+          <KpiStat label="Verified" value={<CountUp value={s.verifiedPct} />} unit="%" />
+          <KpiStat label="Frauds caught" value={<CountUp value={s.fraudsCaught} />} />
           {s.confidence?.mean != null && <KpiStat label="Proof confidence" value={pct(s.confidence.mean)} />}
         </div>
       </motion.section>
@@ -54,6 +59,23 @@ export default function Explore() {
       </motion.div>
 
       <motion.div variants={fadeUp}>
+        <Section eyebrow="Platform-wide · every rupee accounted for" title="Money pipeline">
+          <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1.4fr_1fr]">
+            <Card data-tour="explore-pipeline" className="p-6">
+              <Funnel steps={pipeline(state)} format={fmtInr} />
+            </Card>
+            <Card data-tour="explore-fraud" className="p-6">
+              <div className="mb-3 flex items-baseline justify-between">
+                <span className="text-[15px] font-medium">Fraud caught by type</span>
+                <span className="text-[13px] text-ash">recorded on-chain, no auditor</span>
+              </div>
+              <HBars data={fraudByReason(state)} empty="No fraud attempts recorded yet." />
+            </Card>
+          </div>
+        </Section>
+      </motion.div>
+
+      <motion.div variants={fadeUp} data-tour="explore-sankey">
         <Section eyebrow="Live · donor → NGO → purpose → vendor" title="Where the money went" action={<Link to="/donate"><Button variant="signal">Donate with proof</Button></Link>}>
           <SankeyFlow />
         </Section>
@@ -80,7 +102,7 @@ export default function Explore() {
 
       <motion.div variants={fadeUp}>
         <Section eyebrow="Reputation computed from on-chain history only" title="NGOs">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div data-tour="explore-ngos" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {state.ngos.map((n) => (
               <NgoCard key={n.id} ngo={n} state={state} />
             ))}

@@ -10,6 +10,9 @@ import Reconciler from "../components/watch/Reconciler";
 import RedTeam from "../components/watch/RedTeam";
 import OffRampWatch from "../components/watch/OffRampWatch";
 import StuckMoney from "../components/watch/StuckMoney";
+import { Card, Section } from "../components/ui/kit";
+import { CountUp, HBars, Sparkline } from "../components/viz";
+import { flagsOverTime, fraudByReason } from "../components/viz/data";
 
 /// The theatre: every fraud attempt, every dispute, the watcher's evidence, and the red team.
 export default function Watchtower() {
@@ -26,31 +29,45 @@ export default function Watchtower() {
           <h1 className="font-display text-[64px] leading-none font-normal tracking-tight">Watchtower</h1>
         </div>
         <div className="flex gap-16">
-          <KpiStat label="Frauds caught" value={state.flags.length} />
-          <KpiStat label="NGOs frozen" value={state.stats.frozenNgos} />
-          <KpiStat label="Under challenge" value={underChallenge} />
+          <KpiStat label="Frauds caught" value={<CountUp value={state.flags.length} />} />
+          <KpiStat label="NGOs frozen" value={<CountUp value={state.stats.frozenNgos} />} />
+          <KpiStat label="Under challenge" value={<CountUp value={underChallenge} />} />
           <KpiStat label="Paid to watchers" {...paidToWatchers} />
         </div>
       </motion.section>
       <motion.div variants={fadeUp}>
+        <Section tour="watch-overview" eyebrow="What the open watchers have caught" title="Fraud at a glance">
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <Card className="p-6">
+              <div className="mb-3 text-[15px] font-medium">Fraud caught by type</div>
+              <HBars data={fraudByReason(state)} empty="No fraud attempts recorded yet." />
+            </Card>
+            <Card className="p-6">
+              <div className="mb-3 text-[15px] font-medium">Fraud flags over time</div>
+              <Sparkline points={flagsOverTime(state)} label="flags" />
+            </Card>
+          </div>
+        </Section>
+      </motion.div>
+      <motion.div variants={fadeUp} data-tour="watch-graveyard">
         <Graveyard />
       </motion.div>
-      <motion.div variants={fadeUp}>
+      <motion.div variants={fadeUp} data-tour="watch-court">
         <Court />
       </motion.div>
-      <motion.div variants={fadeUp}>
+      <motion.div variants={fadeUp} data-tour="watch-offramp">
         <OffRampWatch />
       </motion.div>
-      <motion.div variants={fadeUp}>
+      <motion.div variants={fadeUp} data-tour="watch-stuck">
         <StuckMoney />
       </motion.div>
       <motion.div variants={fadeUp}>
         <WatcherFeed />
       </motion.div>
-      <motion.div variants={fadeUp}>
+      <motion.div variants={fadeUp} data-tour="watch-reconciler">
         <Reconciler />
       </motion.div>
-      <motion.div variants={fadeUp}>
+      <motion.div variants={fadeUp} data-tour="watch-redteam">
         <RedTeam />
       </motion.div>
     </motion.div>

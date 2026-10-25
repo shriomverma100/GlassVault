@@ -223,8 +223,24 @@ describe("Cross-chain donation (bridge keeps the tag)", () => {
     const f = await loadFixture(deployFixture);
     const gw = await ethers.deployContract("BridgeGateway", [await f.dinr.getAddress(), f.deployer.address]);
     await f.dinr.connect(f.donorA).approve(await gw.getAddress(), ethers.MaxUint256);
-    await expect(gw.connect(f.donorA).sendDonation(0, Category.Medical, inr(2_000), 0, 31337))
-      .to.emit(gw, "DonationSent").withArgs(0, f.donorA.address, 0, Category.Medical, inr(2_000), 0, 31337);
+    const dl = (await time.latest()) + 30 * 86400;
+    await expect(gw.connect(f.donorA).sendDonation(0, Category.Medical, inr(2_000), dl, 31337))
+      .to.emit(gw, "DonationSent").withArgs(0, f.donorA.address, 0, Category.Medical, inr(2_000), dl, 31337);
     expect(await f.dinr.balanceOf(await gw.getAddress())).to.equal(inr(2_000));
+  });
+
+  it("source side rejects donations the destination couldn't accept, and refunds undeliverable ones", async () => {
+    const f = await loadFixture(deployFixture);
+    const gw = await ethers.deployContract("BridgeGateway", [await f.dinr.getAddress(), f.deployer.address]);
+    await f.dinr.connect(f.donorA).approve(await gw.getAddress(), ethers.MaxUint256);
+    const soon = (await time.latest()) + 60;
+    await expect(gw.connect(f.donorA).sendDonation(0, Category.Water, inr(1_000), soon, 31337)).to.be.revertedWithCustomError(gw, "BadDonation");
+    await expect(gw.connect(f.donorA).sendDonation(0, Category.Water, 0, soon + 86400, 31337)).to.be.revertedWithCustomError(gw, "BadDonation");
+    await gw.connect(f.donorA).sendDonation(0, Category.Water, inr(1_000), (await time.latest()) + 30 * 86400, 31337);
+    const before = await f.dinr.balanceOf(f.donorA.address);
+    await expect(gw.connect(f.stranger).refundFailed(0)).to.be.revertedWithCustomError(gw, "OnlyRelayer");
+    await expect(gw.connect(f.deployer).refundFailed(0)).to.emit(gw, "DonationRefunded").withArgs(0, f.donorA.address, inr(1_000));
+    expect((await f.dinr.balanceOf(f.donorA.address)) - before).to.equal(inr(1_000));
+    await expect(gw.connect(f.deployer).refundFailed(0)).to.be.revertedWithCustomError(gw, "NotRefundable");
   });
 });

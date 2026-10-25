@@ -124,7 +124,12 @@ function AccountMenu({ user }) {
         <div role="menu" className="page-enter absolute top-14 right-0 z-50 w-[280px] rounded-[var(--radius-tile)] border border-hairline bg-paper p-2">
           <div className="px-3 py-2">
             <div className="text-[14px] font-medium">{user.displayName}</div>
-            <div className="text-[13px] text-ash">@{user.username}</div>
+            <div className="flex items-center gap-2 text-[13px] text-ash">
+              @{user.username}
+              <span className="rounded-full border border-hairline bg-white px-2 py-0.5 text-[12px] font-medium text-obsidian">
+                {user.wallet === "metamask" ? "MetaMask" : "Password wallet"}
+              </span>
+            </div>
             <div className="mt-1 font-mono text-[12px] break-all text-ash">{user.address}</div>
           </div>
           <button

@@ -11,6 +11,8 @@ import { IconOrb } from "../components/ui/primitives";
 import ProofSpine from "../components/ProofSpine";
 import Journey from "../components/Journey";
 import ConfidenceChain from "../components/ConfidenceChain";
+import { Donut } from "../components/viz";
+import { inr } from "../lib/format";
 import { pct } from "../lib/format";
 import { CategoryIcon, BridgeIcon, VaultIcon, GavelIcon, RefundIcon, CheckIcon, CrossIcon, InvoiceIcon, ScaleIcon } from "../components/icons";
 
@@ -45,7 +47,7 @@ function LotList() {
           ]}
         />
       </motion.section>
-      <motion.div variants={fadeUp} className="border-t border-hairline">
+      <motion.div variants={fadeUp} data-tour="passport-list" className="border-t border-hairline">
         {lots.length === 0 ? (
           <div className="py-8">
             <Empty>
@@ -240,20 +242,34 @@ function LotDetail({ lotId }) {
         </div>
       </motion.section>
 
-      <motion.div variants={fadeUp} className="border-t border-hairline">
+      <motion.div variants={fadeUp} data-tour="passport-spine" className="border-t border-hairline">
         <ProofSpine steps={spineSteps} />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <Section tour="passport-glance" eyebrow="This donation at a glance" title="Where every rupee is right now">
+          <Donut
+            format={inr}
+            center={{ value: inr(lot.amount), label: "donated" }}
+            parts={[
+              { label: "Committed to payouts", value: spent, tone: "signal" },
+              { label: "Still in escrow", value: lot.remaining, tone: "pending" },
+              { label: lot.redirectedTo != null ? "Moved to fallback NGO" : "Returned to donor", value: Math.max(0, lot.amount - spent - lot.remaining), tone: "neutral" },
+            ]}
+          />
+        </Section>
       </motion.div>
 
       {lot.confidence && (
         <motion.div variants={fadeUp}>
-          <Section eyebrow="How sure can you be? Evidence per stage" title="Probabilistic evaluation chain">
+          <Section tour="passport-confidence" eyebrow="How sure can you be? Evidence per stage" title="Probabilistic evaluation chain">
             <ConfidenceChain confidence={lot.confidence} lotId={lot.id} />
           </Section>
         </motion.div>
       )}
 
       <motion.div variants={fadeUp}>
-        <Section eyebrow="Every hop, every chain, every rupee" title="Journey of this donation">
+        <Section tour="passport-journey" eyebrow="Every hop, every chain, every rupee" title="Journey of this donation">
           <Journey lot={lot} payouts={payouts} trail={passport?.trail ?? []} label={label} config={config} now={now} ngos={state.ngos} />
         </Section>
       </motion.div>

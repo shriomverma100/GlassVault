@@ -103,7 +103,7 @@ describe("Off-chain fiat off-ramp — rupee payment proven or flagged", () => {
     expect(await vault.fiatProof(payoutId)).to.equal(s.bankRefHash);
   });
 
-  it("flags the same bank transfer used to settle two payouts (double-counted fiat evidence)", async () => {
+  it("the same bank transfer used to settle two payouts slashes the agent, not the NGO (double-counted fiat evidence)", async () => {
     const f = await offRampPayout();
     const { vault, agent, ngoAdmin } = f;
     const second = await signInvoice(vault, agent, { vendor: agent.address, amount: inr(10_000), invoiceNo: "PL-SECOND" });
@@ -114,8 +114,14 @@ describe("Off-chain fiat off-ramp — rupee payment proven or flagged", () => {
     const a = await signFiat(vault, agent, { payoutId: 0, fiatAmount: inr(20_000), bankRef: "UTR-SAME" });
     await vault.attestFiat(a.s, a.sig);
     const b = await signFiat(vault, agent, { payoutId: 1, fiatAmount: inr(10_000), bankRef: "UTR-SAME" });
-    await expect(vault.attestFiat(b.s, b.sig)).to.emit(vault, "FraudFlagged").withArgs(0, FR.DuplicateFiatProof, b.s.bankRefHash, anyBytes(), 1);
+    await expect(vault.attestFiat(b.s, b.sig))
+      .to.emit(vault, "Discrepancy").withArgs(0, FR.DuplicateFiatProof, b.s.bankRefHash, anyBytes())
+      .and.to.emit(vault, "UnexplainedTransfer")
+      .and.not.to.emit(vault, "FraudFlagged");
     expect(await vault.fiatProof(1)).to.equal(ethers.ZeroHash);
+    expect((await vault.vendors(agent.address)).slashed).to.equal(true);
+    expect((await vault.payout(1)).status).to.equal(5); // Cancelled — unpaid 30% back to donors
+    expect((await vault.ngo(0)).flagCount).to.equal(0); // a rogue agent can't freeze the NGO
   });
 
   it("rejects settlements not signed by the agent, dated before release, or above the invoice", async () => {
@@ -166,3 +172,41 @@ describe("Off-chain fiat off-ramp — rupee payment proven or flagged", () => {
 function anyNum() {
   return (v) => typeof v === "bigint";
 }
+
+describe("Security regressions (review findings)", () => {
+  it("an off-ramp agent can't escape through a freeze: unwinding its unsettled payout slashes it", async () => {
+    const { vault, dinr, agent, payoutId, vendor, ngoAdmin, stranger } = await offRampPayout();
+    await time.increase(WINDOW);
+    await vault.release(payoutId);
+    for (const n of ["FZ-1", "FZ-2"]) {
+      const forged = await signInvoice(vault, ngoAdmin, { vendor: vendor.address, amount: inr(100), invoiceNo: n });
+      await vault.connect(ngoAdmin).requestPayout(forged.inv, forged.sig, [{ lotId: 0, amount: inr(100) }], freshRoot(), 1);
+    }
+    expect((await vault.ngo(0)).frozen).to.equal(true);
+    await expect(vault.connect(stranger).unwindFrozen(payoutId)).to.be.revertedWithCustomError(vault, "SettlementOpen");
+    await time.increase(2 * WINDOW + 1);
+    const before = await dinr.balanceOf(stranger.address);
+    await expect(vault.connect(stranger).unwindFrozen(payoutId)).to.emit(vault, "UnexplainedTransfer");
+    expect((await dinr.balanceOf(stranger.address)) - before).to.equal(inr(5_000));
+    expect((await vault.vendors(agent.address)).slashed).to.equal(true);
+  });
+
+  it("an off-ramp agent can't escape through the impact timeout either", async () => {
+    const { vault, agent, payoutId, stranger } = await offRampPayout();
+    await time.increase(WINDOW);
+    await vault.release(payoutId);
+    await time.increase(4 * WINDOW + 1);
+    await expect(vault.connect(stranger).expireImpact(payoutId)).to.emit(vault, "UnexplainedTransfer").and.to.emit(vault, "ImpactExpired");
+    expect((await vault.vendors(agent.address)).slashed).to.equal(true);
+  });
+
+  it("payout shares are bounded and non-zero, so release can never run out of gas", async () => {
+    const f = await withDex();
+    await f.vault.connect(f.donorA).donate(0, Category.Water, inr(10_000), deadline());
+    const { inv, sig } = await signInvoice(f.vault, f.vendor, { vendor: f.vendor.address, amount: inr(1_000) });
+    const padded = [{ lotId: 0, amount: inr(1_000) }, ...Array.from({ length: 3 }, () => ({ lotId: 0, amount: 0 }))];
+    await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, padded, await batch(f.vault, 0, 1), 1)).to.be.revertedWithCustomError(f.vault, "BadShares");
+    const many = Array.from({ length: 17 }, () => ({ lotId: 0, amount: inr(1) }));
+    await expect(f.vault.connect(f.ngoAdmin).requestPayout(inv, sig, many, await batch(f.vault, 0, 1), 1)).to.be.revertedWithCustomError(f.vault, "BadShares");
+  });
+});

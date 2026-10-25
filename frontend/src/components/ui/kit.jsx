@@ -104,9 +104,9 @@ export function Segmented({ options, value, onChange, id }) {
 }
 
 /// Page section with a hairline top border and an eyebrow label.
-export function Section({ eyebrow, title, action, children, className = "" }) {
+export function Section({ eyebrow, title, action, children, className = "", tour }) {
   return (
-    <section className={`border-t border-hairline py-8 ${className}`}>
+    <section data-tour={tour} className={`border-t border-hairline py-8 ${className}`}>
       {(eyebrow || title || action) && (
         <div className="mb-6 flex items-end justify-between gap-6">
           <div>
@@ -239,7 +239,7 @@ export function KV({ k, children }) {
 export function Toasts() {
   const { toasts } = useApp("toasts");
   return (
-    <div className="pointer-events-none fixed right-6 bottom-6 z-[60] flex w-[360px] flex-col gap-2">
+    <div className="pointer-events-none fixed right-6 bottom-24 z-[60] flex w-[360px] flex-col gap-2">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div

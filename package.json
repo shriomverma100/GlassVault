@@ -17,11 +17,12 @@
     "e2e:attack": "node e2e/attack.js",
     "lint": "npm --prefix frontend run lint",
     "build": "npm --prefix contracts run compile && npm --prefix frontend run build",
-    "check": "npm test && npm run benchmark && npm run lint && npm run build",
+    "check": "npm test && npm run acceptance && npm run lint && npm run build",
     "perf": "node e2e/perf.js",
     "start:prod": "node scripts/dev.mjs --prod",
     "start:test": "node scripts/dev.mjs --prod --profile=test",
     "e2e:full": "node scripts/e2e.mjs",
-    "confidence": "node backend/scripts/confidence.js"
+    "confidence": "node backend/scripts/confidence.js",
+    "acceptance": "npm --prefix contracts run acceptance"
   }
 }
