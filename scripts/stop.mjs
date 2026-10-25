@@ -10,7 +10,7 @@ const win = process.platform === "win32";
 let stopped = 0;
 for (const port of ports) {
   const pids = win
-    ? execSync("netstat -ano -p tcp", { encoding: "utf8" }).split("\n").filter((l) => l.includes(`:${port} `) && l.includes("LISTENING")).map((l) => l.trim().split(/\s+/).at(-1))
+    ? execSync("netstat -ano", { encoding: "utf8" }) // IPv4 and IPv6 (Vite listens on [::1]).split("\n").filter((l) => l.includes(`:${port} `) && l.includes("LISTENING")).map((l) => l.trim().split(/\s+/).at(-1))
     : execSync(`lsof -ti tcp:${port} -sTCP:LISTEN || true`, { encoding: "utf8" }).split("\n").filter(Boolean);
   for (const pid of new Set(pids)) {
     try {

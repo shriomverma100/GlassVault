@@ -27,5 +27,10 @@
     "stop": "node scripts/stop.mjs",
     "demo:kit": "node demo/make-kit.mjs",
     "demo:rehearse": "node e2e/demo-rehearsal.js"
-  }
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "description": "GlassVault — verifiable NGO fund flows: escrow that moves only when proof moves (CASCADE 26, PS 4.2)",
+  "license": "MIT"
 }

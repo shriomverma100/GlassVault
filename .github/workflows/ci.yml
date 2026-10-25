@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, phase-0-baseline]
+  pull_request:
+
+jobs:
+  check:
+    name: Contracts · PS acceptance · lint · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            contracts/package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install
+        run: |
+          npm ci --prefix contracts
+          npm ci --prefix backend
+          npm ci --prefix frontend
+
+      - name: Contract tests
+        run: npm test
+
+      - name: PS 4.2 acceptance suite (includes the 100-receipt benchmark)
+        run: npm run acceptance
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build

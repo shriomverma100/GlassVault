@@ -15,7 +15,7 @@ function freePorts() {
   for (const port of PORTS) {
     try {
       const pids = win
-        ? execSync(`netstat -ano -p tcp`, { encoding: "utf8" })
+        ? execSync("netstat -ano", { encoding: "utf8" }) // IPv4 and IPv6
             .split("\n")
             .filter((l) => l.includes(`:${port} `) && l.includes("LISTENING"))
             .map((l) => l.trim().split(/\s+/).at(-1))
