@@ -13,7 +13,8 @@
     "chain:b": "cross-env CHAIN_ID=31338 hardhat node --port 8546",
     "deploy:a": "hardhat run scripts/deploy.js --network chainA",
     "deploy:b": "hardhat run scripts/deploy.js --network chainB",
-    "deploy": "hardhat run scripts/deploy.js --network chainA && hardhat run scripts/deploy.js --network chainB"
+    "deploy": "hardhat run scripts/deploy.js --network chainA && hardhat run scripts/deploy.js --network chainB",
+    "benchmark": "hardhat run scripts/benchmark.js"
   },
   "keywords": [],
   "author": "",

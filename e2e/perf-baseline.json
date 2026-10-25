@@ -1,0 +1,20 @@
+{
+  "measuredAt": "2026-10-25T12:07:25.019Z",
+  "base": "http://localhost:5173",
+  "navMs": {
+    "/donate": 1530,
+    "/passport": 1559,
+    "/ngo": 1508,
+    "/watchtower": 1558,
+    "/": 1569
+  },
+  "scroll": {
+    "settleMs": 720,
+    "frames": 108,
+    "droppedFrames": 3,
+    "worstFrameMs": 33,
+    "longTasks": 0,
+    "longestTaskMs": 0
+  },
+  "bundleJsKb": 1377
+}

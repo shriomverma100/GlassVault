@@ -23,6 +23,8 @@ role is a funded wallet on the local chain and every action is a real signed tra
 | `npm run benchmark` | 100 receipts, 30% fraudulent, against fresh contracts on an isolated chain |
 | `npm run attack` | Live red-team attack on the running chain (also available as buttons in Watchtower) |
 | `npm run e2e` / `npm run e2e:attack` | Headless browser tests that drive the real UI |
+| `npm run check` | Contract tests + benchmark + lint + production build — must pass before every merge |
+| `npm run perf` | UI responsiveness probe (page-switch latency, scroll settle, dropped frames) against the running app, compared to `e2e/perf-baseline.json` |
 
 ## The 4 evaluation roots
 
