@@ -50,27 +50,21 @@ export function PillTabs({ tabs, active, onChange, id = "tabs", dark = false }) 
   );
 }
 
-// Big light-weight number with a small unit — "89 bpm" style from the reference.
+// Big number with a small unit — "89 bpm" style from the reference. Regular weight, not light:
+// thin strokes on the bone background blur on Windows ClearType.
 export function KpiStat({ label, value, unit }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[12px] text-graphite">{label}</span>
-      <span className="font-display text-[40px] leading-none font-light tabular">
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[13px] font-medium text-ash">{label}</span>
+      <span className="font-display text-[40px] leading-none font-normal tracking-tight text-obsidian tabular">
         {value}
-        {unit && <span className="ml-1 text-[16px] text-graphite">{unit}</span>}
+        {unit && <span className="ml-1 text-[18px] font-medium text-graphite">{unit}</span>}
       </span>
     </div>
   );
 }
 
+// Hover only recolours the border: moving a card shifts its text by sub-pixels and blurs it.
 export function HairlineCard({ className = "", children }) {
-  return (
-    <motion.div
-      whileHover={{ y: -2 }}
-      transition={liquid}
-      className={`rounded-[var(--radius-card)] border border-hairline bg-paper ${className}`}
-    >
-      {children}
-    </motion.div>
-  );
+  return <div className={`rounded-[var(--radius-card)] border border-hairline bg-paper transition-colors hover:border-ash/40 ${className}`}>{children}</div>;
 }

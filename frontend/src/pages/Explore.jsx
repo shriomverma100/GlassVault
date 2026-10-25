@@ -5,7 +5,8 @@ import { useApp } from "../lib/store";
 import { fadeUp, liquid, stagger } from "../lib/motion";
 import { labeler, eventSentence, eventTone } from "../lib/derive";
 import { KpiStat, IconOrb } from "../components/ui/primitives";
-import { Section, Card, StatusBadge, Rupees, compactInr, Button } from "../components/ui/kit";
+import { Section, Card, StatusBadge, Rupees, Button } from "../components/ui/kit";
+import { inrCompact, inrUnitFor } from "../lib/format";
 import ProofSpine from "../components/ProofSpine";
 import SankeyFlow from "../components/explore/SankeyFlow";
 import { ScaleIcon, VaultIcon, FingerprintIcon, InvoiceIcon, QrIcon, CrossIcon, CheckIcon } from "../components/icons";
@@ -21,12 +22,14 @@ export default function Explore() {
   const { state, events, config } = useApp();
   const s = state.stats;
   const label = useMemo(() => labeler(config), [config]);
-  const [tracked, trackedUnit] = compactInr(s.tracked);
-  const [escrow, escrowUnit] = compactInr(s.inEscrow);
-  const [paid, paidUnit] = compactInr(s.paidOut);
+  // one unit for the whole money row, so "₹3.0 L" never sits next to "₹40,000"
+  const unit = inrUnitFor(s.tracked, s.inEscrow, s.paidOut);
+  const tracked = inrCompact(s.tracked, unit);
+  const escrow = inrCompact(s.inEscrow, unit);
+  const paid = inrCompact(s.paidOut, unit);
 
   return (
-    <motion.div variants={stagger(0.07)} initial="hidden" animate="show">
+    <motion.div variants={stagger()} initial="hidden" animate="show">
       <motion.section variants={fadeUp} className="flex flex-wrap items-end justify-between gap-10 pt-10 pb-8">
         <div className="max-w-[520px]">
           <span className="text-[12px] text-graphite">Every rupee, provable</span>
@@ -36,9 +39,9 @@ export default function Explore() {
           </p>
         </div>
         <div className="flex flex-wrap gap-x-14 gap-y-6">
-          <KpiStat label="Tracked" value={tracked} unit={trackedUnit} />
-          <KpiStat label="In escrow" value={escrow} unit={escrowUnit} />
-          <KpiStat label="Paid out" value={paid} unit={paidUnit} />
+          <KpiStat label="Tracked" {...tracked} />
+          <KpiStat label="In escrow" {...escrow} />
+          <KpiStat label="Paid out" {...paid} />
           <KpiStat label="Proofs" value={s.proofs.toLocaleString("en-IN")} />
           <KpiStat label="Verified" value={s.verifiedPct} unit="%" />
           <KpiStat label="Frauds caught" value={s.fraudsCaught} />
@@ -90,7 +93,7 @@ export default function Explore() {
 function NgoCard({ ngo, state }) {
   const raised = state.lots.filter((l) => l.ngoId === ngo.id).reduce((a, l) => a + l.amount, 0);
   return (
-    <Card whileHover={{ y: -2 }} className={`relative overflow-hidden p-6 ${ngo.frozen ? "hatch" : ""}`}>
+    <Card className={`relative overflow-hidden p-6 ${ngo.frozen ? "hatch" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[12px] text-graphite">NGO #{ngo.id}</div>
@@ -120,7 +123,7 @@ function NgoCard({ ngo, state }) {
           className={`h-full rounded-full ${ngo.frozen ? "bg-obsidian" : "bg-signal-deep"}`}
           initial={{ width: 0 }}
           animate={{ width: `${ngo.trust}%` }}
-          transition={{ ...liquid, delay: 0.2 }}
+          transition={liquid}
         />
       </div>
       <div className="mt-5 grid grid-cols-3 border-t border-hairline pt-4 text-[13px]">
@@ -157,7 +160,6 @@ function Ticker({ events, label, state }) {
             return (
               <motion.li
                 key={e.id}
-                layout
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}

@@ -15,35 +15,30 @@ export default function FreezeFrame() {
     <AnimatePresence>
       {frozenAlert && (
         <motion.div className="fixed inset-0 z-[70] grid place-items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          {/* frost spreading in from the edges */}
-          <motion.div
-            className="absolute inset-0 bg-obsidian/85 backdrop-blur-sm"
-            initial={{ clipPath: "inset(50% 50% 50% 50% round 40px)" }}
-            animate={{ clipPath: "inset(0% 0% 0% 0% round 0px)" }}
-            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-          />
+          {/* solid scrim, opacity only: a full-screen backdrop blur + animated clip-path repaints every frame */}
+          <motion.div className="absolute inset-0 bg-obsidian/90" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} />
           <motion.div
             className="absolute inset-0 opacity-30"
             style={{ backgroundImage: "repeating-linear-gradient(60deg, rgb(255 255 255 / .25) 0 1px, transparent 1px 14px), repeating-linear-gradient(-60deg, rgb(255 255 255 / .18) 0 1px, transparent 1px 18px)" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.3 }}
-            transition={{ delay: 0.5, duration: 1 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
           />
-          <motion.div initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ ...liquid, delay: 0.35 }} className="relative w-[620px] max-w-[92vw] rounded-[var(--radius-card)] border border-white/15 bg-charcoal p-10 text-white">
+          <motion.div initial={{ scale: 0.92, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ ...liquid, delay: 0.08 }} className="relative w-[620px] max-w-[92vw] rounded-[var(--radius-card)] border border-white/15 bg-charcoal p-10 text-white">
             {/* vault bolts sliding shut */}
             <div className="mb-8 flex items-center gap-4">
               <div className="relative grid h-20 w-20 place-items-center rounded-full border border-white/20">
-                <motion.span initial={{ rotate: -120 }} animate={{ rotate: 0 }} transition={{ type: "spring", stiffness: 120, damping: 12, delay: 0.6 }}>
+                <motion.span initial={{ rotate: -120 }} animate={{ rotate: 0 }} transition={{ type: "spring", stiffness: 260, damping: 16, delay: 0.15 }}>
                   <SnowLockIcon size={40} />
                 </motion.span>
               </div>
               <div className="flex gap-2">
                 {[0, 1, 2].map((i) => (
-                  <motion.span key={i} className="h-3 w-14 rounded-full bg-white" initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...liquid, delay: 0.7 + i * 0.12 }} />
+                  <motion.span key={i} className="h-3 w-14 rounded-full bg-white" initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ ...liquid, delay: 0.2 + i * 0.06 }} />
                 ))}
               </div>
             </div>
-            <div className="text-[12px] tracking-wide text-white/60 uppercase">Escrow frozen by contract · no human pressed a button</div>
+            <div className="text-[13px] font-medium text-white/75">Escrow frozen by contract · no human pressed a button</div>
             <h2 className="mt-2 font-display text-[44px] leading-tight font-light">{ngo?.name ?? `NGO ${frozenAlert.args.ngoId}`}</h2>
             <div className="mt-6 flex gap-12">
               <div>

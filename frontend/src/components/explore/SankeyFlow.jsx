@@ -18,12 +18,12 @@ const OPACITY = { verified: 0.85, pending: 1, flagged: 0.9, frozen: 0.8, refunde
 const LEGEND = [
   ["verified", "Verified"],
   ["pending", "In window / awaiting impact"],
-  ["flagged", "Challenged"],
-  ["frozen", "Frozen"],
+  ["flagged", "Disputed · vote open"],
+  ["frozen", "Frozen / paid before freeze"],
   ["refunded", "Refunded"],
 ];
 
-/// Live fund flow: donor → NGO → category → vendor (and what still sits in escrow).
+/// Live fund flow: donor → NGO → category → vendor (and what still sits in escrow or went back to donors).
 export default function SankeyFlow({ height = 420 }) {
   const { state, config } = useApp();
   const [flow, setFlow] = useState(null);
@@ -88,14 +88,14 @@ export default function SankeyFlow({ height = 420 }) {
                 const dim = hover !== null && hover !== i;
                 return (
                   <motion.path
-                    key={`${l.source.id}-${l.target.id}-${i}`}
+                    key={`${l.source.id}-${l.target.id}-${l.status}`}
                     d={sankeyLinkHorizontal()(l)}
                     fill="none"
                     stroke={STROKE[l.status] ?? "var(--color-hairline)"}
                     strokeWidth={Math.max(1.5, l.width)}
                     initial={{ pathLength: 0, opacity: 0 }}
                     animate={{ pathLength: 1, opacity: dim ? 0.15 : OPACITY[l.status] ?? 0.6 }}
-                    transition={{ pathLength: { duration: 1.4, delay: 0.04 * i, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.25 } }}
+                    transition={{ pathLength: { duration: 0.5, delay: Math.min(i, 10) * 0.02, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.12 } }}
                     onMouseEnter={() => setHover(i)}
                     onMouseLeave={() => setHover(null)}
                     style={{ cursor: "pointer" }}
@@ -112,13 +112,20 @@ export default function SankeyFlow({ height = 420 }) {
                     width={n.x1 - n.x0}
                     height={Math.max(2, n.y1 - n.y0)}
                     rx={3}
-                    fill={n.kind === "escrow" ? "var(--color-white)" : "var(--color-obsidian)"}
+                    fill={n.kind === "escrow" || n.kind === "refund" ? "var(--color-white)" : "var(--color-obsidian)"}
                     stroke="var(--color-obsidian)"
-                    strokeWidth={n.kind === "escrow" ? 1 : 0}
+                    strokeWidth={n.kind === "escrow" || n.kind === "refund" ? 1 : 0}
                   />
-                  <text x={n.x1 + 8} y={(n.y0 + n.y1) / 2} dy="0.35em" className="fill-obsidian text-[12px]" style={{ fontFamily: "var(--font-sans)" }}>
+                  {/* bone halo behind the text keeps labels readable where they cross the yellow bands */}
+                  <text
+                    x={n.x1 + 8}
+                    y={(n.y0 + n.y1) / 2}
+                    dy="0.35em"
+                    className="fill-obsidian text-[13px] font-medium"
+                    style={{ fontFamily: "var(--font-sans)", paintOrder: "stroke", stroke: "var(--color-bone)", strokeWidth: 4, strokeLinejoin: "round" }}
+                  >
                     {nodeLabel(n)}
-                    <tspan className="fill-graphite" dx="6">
+                    <tspan className="fill-ash font-normal" dx="6">
                       ₹{Math.round(n.value).toLocaleString("en-IN")}
                     </tspan>
                   </text>
@@ -126,7 +133,7 @@ export default function SankeyFlow({ height = 420 }) {
               ))}
             </g>
           </svg>
-          <div className="mt-4 flex flex-wrap items-center gap-5 text-[12px] text-graphite">
+          <div className="mt-4 flex flex-wrap items-center gap-5 text-[13px] text-ash">
             {LEGEND.map(([k, t]) => (
               <span key={k} className="flex items-center gap-2">
                 <svg width="22" height="8">

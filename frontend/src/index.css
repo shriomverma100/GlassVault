@@ -14,13 +14,17 @@
   --color-bone: #e8e6e1;
   --color-hairline: #d6d3cc;
 
-  /* blacks — black means "problem" (fraud / frozen) */
-  --color-graphite: #9a9893;
-  --color-ash: #5e5c58;
+  /* blacks — black means "problem" (fraud / frozen).
+     graphite is the secondary-text colour: #66645F is 4.7:1 on bone and 5.3:1 on paper (WCAG AA).
+     Use hairline, not graphite, for purely decorative strokes. */
+  --color-graphite: #66645f;
+  --color-ash: #3f3d3a; /* strong secondary text, 8.7:1 on bone */
   --color-charcoal: #2a2a28;
   --color-obsidian: #121212;
 
-  --font-display: "Urbanist Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Urbanist has no ₹ glyph: Geist (already loaded) supplies it, so the rupee sign matches the digits
+     instead of falling back to a random system font. */
+  --font-display: "Urbanist Variable", "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 
@@ -35,7 +39,7 @@
     color: var(--color-obsidian);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
+    scrollbar-gutter: stable; /* no layout jump between short and long pages */
   }
   ::selection {
     background: var(--color-signal);
@@ -45,9 +49,18 @@
     outline: 2px solid var(--color-signal-deep);
     outline-offset: 2px;
   }
-  /* Lenis smooth scroll */
-  html.lenis, html.lenis body { height: auto; }
-  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+}
+
+/* Route change: opacity-only fade so it runs on the compositor and never blocks input. */
+@keyframes page-enter {
+  from { opacity: 0; }
+}
+.page-enter {
+  animation: page-enter 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation: none; }
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }
 
 @utility hairline {

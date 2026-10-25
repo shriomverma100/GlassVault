@@ -58,6 +58,7 @@ for (const to of ROUTES) {
 // 2. scroll the long Explore page with real wheel input; record frames and how long it keeps moving
 await page.goto(BASE + "/", { waitUntil: "networkidle" });
 await page.waitForSelector("main");
+await page.waitForTimeout(1000); // let the page finish its first paint/animations, as a reader would
 await page.mouse.move(700, 450);
 await page.evaluate(() => {
   window.scrollTo(0, 0);
@@ -106,8 +107,14 @@ const scroll = await page.evaluate(
 await browser.close();
 
 const dist = new URL("../frontend/dist/assets/", import.meta.url);
-const jsKb = fs.existsSync(dist)
-  ? Math.round(fs.readdirSync(dist).filter((f) => f.endsWith(".js")).reduce((s, f) => s + fs.statSync(new URL(f, dist)).size, 0) / 1024)
+// JS the browser must download before the first page renders: the entry script + its modulepreloads
+const html = new URL("../frontend/dist/index.html", import.meta.url);
+const jsKb = fs.existsSync(html)
+  ? Math.round(
+      [...fs.readFileSync(html, "utf8").matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)]
+        .map((m) => fs.statSync(new URL(m[1], dist)).size)
+        .reduce((a, b) => a + b, 0) / 1024,
+    )
   : null;
 
 const result = { measuredAt: new Date().toISOString(), base: BASE, navMs: nav, scroll, bundleJsKb: jsKb };
@@ -122,7 +129,7 @@ row("    keeps moving after input", scroll.settleMs, before?.scroll?.settleMs);
 row("    dropped frames", scroll.droppedFrames, before?.scroll?.droppedFrames, `of ${scroll.frames}`);
 row("    worst frame", scroll.worstFrameMs, before?.scroll?.worstFrameMs);
 row("    long tasks (>50ms)", scroll.longTasks, before?.scroll?.longTasks, "");
-row("  JS bundle", jsKb, before?.bundleJsKb, "KB");
+row("  JS before first render", jsKb, before?.bundleJsKb, "KB");
 
 if (process.argv.includes("--save") || !before) {
   fs.writeFileSync(BASELINE, JSON.stringify(result, null, 2) + "\n");
