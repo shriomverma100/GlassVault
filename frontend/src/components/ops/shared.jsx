@@ -6,7 +6,7 @@ import { useApp } from "../../lib/store";
 import { liquid } from "../../lib/motion";
 import { CheckIcon, CrossIcon } from "../icons";
 
-export const FRAUD_REASONS = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign", "DuplicateFiatProof", "UnexplainedTransfer"];
+export const FRAUD_REASONS = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign", "DuplicateFiatProof", "UnexplainedTransfer", "ImpossibleTimeline", "InvoiceBeforeDonation", "ImpactNotProven"];
 export const humanize = (s = "") => s.replace(/([A-Z])/g, " $1").trim();
 export const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
@@ -29,12 +29,13 @@ export function useReceiptCid(fileHash, invoice) {
 }
 
 /// One pre-check row: yellow check when it passes, hatched black cross when it fails.
-export function CheckRow({ ok, pending, label, detail }) {
+/// `warn`: a failure is a discrepancy (rejected, not fraud) — dashed outline instead of black hatch.
+export function CheckRow({ ok, pending, warn, label, detail }) {
   return (
     <div className="flex items-start gap-3 border-b border-hairline py-3 last:border-b-0">
       <span
         className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${
-          pending ? "border border-dashed border-hairline bg-white" : ok ? "bg-signal text-obsidian" : "hatch bg-obsidian text-white"
+          pending ? "border border-dashed border-hairline bg-white" : ok ? "bg-signal text-obsidian" : warn ? "border border-dashed border-obsidian bg-white text-obsidian" : "hatch bg-obsidian text-white"
         }`}
       >
         {!pending && (ok ? <CheckIcon size={14} /> : <CrossIcon size={14} />)}

@@ -19,8 +19,8 @@ const WORD = { done: null, pending: "pending", disputed: "disputed", bad: "probl
 
 /// The full multi-hop timeline of one donation — chain B → swap → bridge → escrow → invoice → release →
 /// rupee payout → delivery → impact — each hop with its transaction and time, built from chain state.
-export default function Journey({ lot, payouts, trail, label, config, now }) {
-  const hops = journeyHops({ lot, payouts, trail, label, config, now });
+export default function Journey({ lot, payouts, trail, label, config, now, ngos }) {
+  const hops = journeyHops({ lot, payouts, trail, label, config, now, ngos });
   return (
     <ol className="relative ml-3 border-l border-hairline">
       {hops.map((h, i) => (
@@ -44,7 +44,8 @@ export default function Journey({ lot, payouts, trail, label, config, now }) {
   );
 }
 
-export function journeyHops({ lot, payouts, trail = [], label, config, now }) {
+export function journeyHops({ lot, payouts, trail = [], label, config, now, ngos = [] }) {
+  const ngoName = (id) => ngos[id]?.name ?? `NGO #${id}`;
   const A = config.chainA.chainId;
   const ev = (name, pred = () => true) => trail.filter((e) => e.name === name && pred(e)).at(-1);
   const forPayout = (id) => (e) => Number(e.args.payoutId) === id;
@@ -68,6 +69,9 @@ export function journeyHops({ lot, payouts, trail = [], label, config, now }) {
     ...at(arrive),
     tx: o?.deliverTx ?? arrive?.tx,
   });
+  if (lot.redirectedFrom != null) {
+    hops.push({ status: "done", title: `Arrived from donation #${lot.redirectedFrom} (fallback)`, sub: "The first NGO was frozen or missed its deadline — the donor's chosen fallback took over", ...at(ev("LotRedirected")) });
+  }
 
   // ②–④ every payout this lot funded
   for (const p of [...payouts].sort((a, b) => a.id - b.id)) {
@@ -99,16 +103,26 @@ export function journeyHops({ lot, payouts, trail = [], label, config, now }) {
     }
 
     if (p.status === "Cancelled") {
-      hops.push({ status: "bad", title: "Payout cancelled — unpaid money returned to the donors' lots", ...at(ev("PayoutUnwound", forPayout(p.id))) });
+      if (p.impactExpired) {
+        hops.push({ status: "bad", title: "Delivery never proven — unpaid 30% returned to donors", sub: "No beneficiary proof by the impact deadline", tx: p.impactExpired.tx, ...at(ev("ImpactExpired", forPayout(p.id))) });
+      } else {
+        hops.push({ status: "bad", title: "Payout cancelled — unpaid money returned to the donors' lots", ...at(ev("PayoutUnwound", forPayout(p.id))) });
+      }
       continue;
     }
     if (p.deliveriesRequired > 0) {
       const done = p.deliveries >= p.deliveriesRequired;
-      hops.push({ status: done ? "done" : "pending", title: `${p.deliveries}/${p.deliveriesRequired} beneficiaries confirmed delivery`, sub: "QR cards checked against the approved list — no names on-chain", ...at(ev("DeliveryConfirmed", forPayout(p.id))) });
+      const due = !done && p.status === "Released" && p.impactDeadline ? <> · due in <Countdown until={p.impactDeadline} done="now — unproven 30% can be returned" /></> : null;
+      hops.push({ status: done ? "done" : "pending", title: `${p.deliveries}/${p.deliveriesRequired} beneficiaries confirmed delivery`, sub: <>QR cards checked against the approved list — no names on-chain{due}</>, ...at(ev("DeliveryConfirmed", forPayout(p.id))) });
     }
     if (p.status === "Completed") hops.push({ status: "done", title: "Impact verified · final 30% paid", sub: "Every donor of this payout received a Proof-of-Impact token", ...at(ev("ImpactVerified", forPayout(p.id))) });
   }
 
-  if (lot.remaining > 0) hops.push({ status: "pending", title: `${inr(lot.remaining)} still in escrow`, sub: "Unspent by the deadline → the donor can reclaim it" });
+  if (lot.redirectedTo != null) {
+    hops.push({ status: "done", title: `Redirected to ${ngoName(lot.fallbackNgoId)} as donation #${lot.redirectedTo}`, sub: "Unspent funds moved to the donor's fallback NGO — same purpose", ...at(ev("LotRedirected")) });
+  } else if (lot.remaining > 0) {
+    const after = lot.fallbackNgoId != null ? `moves to ${ngoName(lot.fallbackNgoId)}` : "the donor can reclaim it";
+    hops.push({ status: "pending", title: `${inr(lot.remaining)} still in escrow`, sub: `Unspent by the deadline or if the NGO is frozen → ${after}` });
+  }
   return hops;
 }

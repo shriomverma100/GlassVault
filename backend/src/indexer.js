@@ -4,7 +4,7 @@ import { db } from "./store.js";
 
 const CATEGORY = ["Water", "Medical", "Education"];
 const PAYOUT_STATUS = ["None", "Pending", "Released", "Completed", "Challenged", "Cancelled"];
-const FRAUD_REASON = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign", "DuplicateFiatProof", "UnexplainedTransfer"];
+const FRAUD_REASON = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign", "DuplicateFiatProof", "UnexplainedTransfer", "ImpossibleTimeline", "InvoiceBeforeDonation", "ImpactNotProven"];
 
 const fmt = (v) => Number(ethers.formatUnits(v, 18)); // dINR → rupees (demo amounts stay well inside float precision)
 
@@ -27,6 +27,10 @@ export class Indexer extends EventEmitter {
     this.hops = { swapped: new Map(), sent: new Map(), delivered: new Map() }; // "chain:nonce" → hop; delivered: lotId → hop
     this.fiat = new Map(); // payoutId → fiat settlement attested by the off-ramp agent
     this.unexplained = new Map(); // payoutId → unsettled off-ramp payout reported by a watcher
+    this.lotTimes = new Map(); // lotId → time of its Donated event (fallback for lotCreatedAt on older deployments)
+    this.fallbacks = new Map(); // lotId → NGO that inherits the lot if its NGO fails (dead-man switch)
+    this.redirects = { to: new Map(), from: new Map() }; // lotId → lotId it was redirected to / from
+    this.impactExpired = new Map(); // payoutId → impact never proven: unpaid 30% returned to the lots
     this.events = [];
     this.eventIds = new Set(); // a poll that fails half-way re-reads logs it already ingested
     this.flags = []; // fraud caught: NGO flags + vendor slashes
@@ -123,6 +127,13 @@ export class Indexer extends EventEmitter {
     if (parsed.name === "FiatSettled") {
       this.fiat.set(Number(args.payoutId), { agent: args.agent, fiatAmount: fmt(args.fiatAmount), bankRefHash: args.bankRefHash, payeeHash: args.payeeHash, paidAt: Number(args.paidAt), tx: ev.tx });
     }
+    if (parsed.name === "Donated") this.lotTimes.set(Number(args.lotId), ev.time);
+    if (parsed.name === "FallbackSet") this.fallbacks.set(Number(args.lotId), Number(args.fallbackNgoId));
+    if (parsed.name === "LotRedirected") {
+      this.redirects.to.set(Number(args.fromLot), Number(args.toLot));
+      this.redirects.from.set(Number(args.toLot), Number(args.fromLot));
+    }
+    if (parsed.name === "ImpactExpired") this.impactExpired.set(Number(args.payoutId), { returned: fmt(args.returned), tx: ev.tx });
     if (parsed.name === "UnexplainedTransfer") this.unexplained.set(Number(args.payoutId), { agent: args.agent, reporter: args.reporter, reward: fmt(args.reward), tx: ev.tx });
     this.emit("event", ev);
   }
@@ -154,7 +165,11 @@ export class Indexer extends EventEmitter {
 
     const lots = await Promise.all(
       [...Array(Number(nLots)).keys()].map(async (id) => {
-        const l = await v.lot(id);
+        const [l, createdAt, fallback] = await Promise.all([
+          v.lot(id),
+          has("lotCreatedAt") ? v.lotCreatedAt(id) : 0n,
+          has("fallbackOf") ? v.fallbackOf(id) : 0n,
+        ]);
         return {
           id,
           donor: l.donor,
@@ -165,17 +180,22 @@ export class Indexer extends EventEmitter {
           deadline: Number(l.deadline),
           sourceChain: Number(l.sourceChain),
           origin: this.origin(id),
+          createdAt: Number(createdAt) || this.lotTimes.get(id) || null,
+          fallbackNgoId: fallback > 0n ? Number(fallback) - 1 : (this.fallbacks.get(id) ?? null),
+          redirectedTo: this.redirects.to.get(id) ?? null,
+          redirectedFrom: this.redirects.from.get(id) ?? null,
         };
       }),
     );
 
     const payouts = await Promise.all(
       [...Array(Number(nPayouts)).keys()].map(async (id) => {
-        const [p, shares, releasedAt, fiatDeadline] = await Promise.all([
+        const [p, shares, releasedAt, fiatDeadline, impactDeadline] = await Promise.all([
           v.payout(id),
           v.payoutShares(id),
           has("releasedAt") ? v.releasedAt(id) : 0n,
           has("fiatDeadline") ? v.fiatDeadline(id) : 0n,
+          has("impactDeadline") ? v.impactDeadline(id) : 0n,
         ]);
         const vendor = await v.vendors(p.vendor);
         const status = PAYOUT_STATUS[Number(p.status)];
@@ -216,6 +236,8 @@ export class Indexer extends EventEmitter {
           fiatDeadline: Number(fiatDeadline),
           fiat: this.fiat.get(id) ?? null,
           unexplained: this.unexplained.get(id) ?? null,
+          impactDeadline: Number(impactDeadline),
+          impactExpired: this.impactExpired.get(id) ?? null,
         };
       }),
     );
@@ -264,6 +286,8 @@ export class Indexer extends EventEmitter {
       verifiedPct: payouts.length ? Math.round((100 * payouts.filter((p) => p.status === "Completed").length) / payouts.length) : 0,
       fiatSettled: sum(payouts, (p) => p.fiat?.fiatAmount ?? 0),
       unexplainedTransfers: payouts.filter((p) => p.unexplained).length,
+      impactExpired: payouts.filter((p) => p.impactExpired).length,
+      redirectedLots: lots.filter((l) => l.redirectedTo !== null).length,
       ledger,
     };
 

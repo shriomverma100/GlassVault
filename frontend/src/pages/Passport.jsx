@@ -139,6 +139,10 @@ function LotDetail({ lotId }) {
   const bridged = lot.sourceChain !== config.chainA.chainId;
   const spent = payouts.reduce((a, p) => a + lotSpent(p), 0);
   const canReclaim = isDonor && lot.remaining > 0 && (ngo.frozen || now > lot.deadline);
+  // dead-man switch: an expired lot with a fallback NGO can be moved there by anyone signed in
+  const fallback = lot.fallbackNgoId != null ? state.ngos[lot.fallbackNgoId] : null;
+  const expired = lot.remaining > 0 && (ngo.frozen || now > lot.deadline);
+  const canRedirect = expired && fallback && !fallback.frozen && lot.redirectedTo == null && !!address;
   const latest = (pred) => payouts.find(pred);
   const pending = latest((p) => p.status === "Pending");
   const released = latest((p) => p.status === "Released");
@@ -234,8 +238,44 @@ function LotDetail({ lotId }) {
 
       <motion.div variants={fadeUp}>
         <Section eyebrow="Every hop, every chain, every rupee" title="Journey of this donation">
-          <Journey lot={lot} payouts={payouts} trail={passport?.trail ?? []} label={label} config={config} now={now} />
+          <Journey lot={lot} payouts={payouts} trail={passport?.trail ?? []} label={label} config={config} now={now} ngos={state.ngos} />
         </Section>
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <Card className="mb-8 flex flex-wrap items-center justify-between gap-4 p-6">
+          <div>
+            <div className="text-[13px] font-medium text-ash">If this NGO is frozen or misses the deadline</div>
+            <div className="mt-1 text-[16px]">
+              {lot.redirectedTo != null ? (
+                <>
+                  Moved to {fallback?.name} as{" "}
+                  <Link to={`/passport/${lot.redirectedTo}`} className="font-medium underline underline-offset-4">
+                    donation #{lot.redirectedTo}
+                  </Link>
+                </>
+              ) : fallback ? (
+                <>Fallback: unspent funds move to {fallback.name}</>
+              ) : (
+                <>Refund to donor</>
+              )}
+            </div>
+            {lot.redirectedFrom != null && (
+              <div className="mt-1 text-[14px] text-ash">
+                This donation arrived from{" "}
+                <Link to={`/passport/${lot.redirectedFrom}`} className="underline underline-offset-4">
+                  donation #{lot.redirectedFrom}
+                </Link>{" "}
+                as its fallback.
+              </div>
+            )}
+          </div>
+          {canRedirect && (
+            <Button variant="signal" onClick={() => run(`Move unspent ₹${lot.remaining.toLocaleString("en-IN")} to ${fallback.name}`, () => c.vault.redirect(lot.id))}>
+              Move unspent <Rupees value={lot.remaining} /> to {fallback.name}
+            </Button>
+          )}
+        </Card>
       </motion.div>
 
       {(canReclaim || (isDonor && ngo.frozen)) && (
@@ -390,6 +430,7 @@ function LotDetail({ lotId }) {
           <KV k="Source chain">{lot.sourceChain}</KV>
           <KV k="Category">{lot.category}</KV>
           <KV k="Proof deadline">{new Date(lot.deadline * 1000).toLocaleString("en-IN")}</KV>
+          <KV k="Fallback">{fallback ? `${fallback.name} (NGO #${fallback.id})` : "refund to donor"}</KV>
         </div>
         {payouts.map((p) => (
           <div key={p.id} className="mb-6">

@@ -81,7 +81,13 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
   });
   const budgetOk = shares.length > 0 && Math.abs(sum - Number(amount)) < 1e-9 && withinBudget;
   const impactOk = !!root && rootUsedBy === undefined && required > 0 && required <= rootCount;
-  const allOk = sigOk && vendorOk && nullifierUsed === false && budgetOk && impactOk;
+  // timeline: a future-dated invoice is an impossible timeline (fraud flag); one dated more than 7 days
+  // before a donation it charges is a discrepancy (rejected, not counted toward a freeze)
+  const nowTs = chainNow();
+  const dateOk = Number(invoice.date) <= nowTs + 86400; // same 1-day tolerance as the contract (time zones)
+  const chargedLots = shares.map((s) => state.lots[s.lotId]).filter(Boolean);
+  const notBeforeDonations = chargedLots.every((l) => !l.createdAt || Number(invoice.date) >= l.createdAt - 7 * 86400);
+  const allOk = sigOk && vendorOk && nullifierUsed === false && budgetOk && impactOk && dateOk && notBeforeDonations;
 
   /// The indexer view can lag a block behind. Re-read every charged lot from the chain; if a share
   /// that fitted the shown balance no longer fits, re-allocate instead of sending a stale request.
@@ -266,6 +272,13 @@ export default function PreparePayout({ ngo, invoice, onDone }) {
           <CheckRow ok={vendorOk} label="Registered vendor, right category" detail={vendor ? `${vendor.category} · stake ₹${vendor.stake.toLocaleString("en-IN")}` : "Vendor not registered"} />
           <CheckRow ok={nullifierUsed === false} pending={nullifierUsed === null} label="Invoice never used before" detail={nullifierUsed ? "Nullifier already on-chain — duplicate" : "Global nullifier check across all NGOs"} />
           <CheckRow ok={budgetOk} label="Within donor budgets" detail={budgetOk ? "Shares add up and stay inside each lot" : "Shares must equal the amount and fit each lot"} />
+          <CheckRow ok={dateOk} label="Invoice date is not in the future" detail={dateOk ? "Dated before today" : "A future-dated invoice is an impossible timeline — recorded as fraud"} />
+          <CheckRow
+            ok={notBeforeDonations}
+            warn
+            label="Invoice not older than 7 days before the donations it charges"
+            detail={notBeforeDonations ? "Spending happened after the money arrived" : "Rejected as a discrepancy — not counted toward a freeze"}
+          />
           <CheckRow
             ok={impactOk}
             label="Beneficiary list attested by an independent field partner"

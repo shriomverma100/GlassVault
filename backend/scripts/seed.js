@@ -86,7 +86,15 @@ const donations = [
   ["donorPriya", 1, CAT.Water, 25_000],
 ];
 for (const [role, ngo, cat, amt] of donations) {
-  await wait(vaultAs(role).donate(ngo, cat, inr(amt), await inDays(30)));
+  const vault = vaultAs(role);
+  // dead-man switch: Tata CSR's gift to Shadow Trust names Asha as fallback — if Shadow is frozen or
+  // misses the deadline, anyone can redirect the unspent part to Asha instead of it sitting idle
+  if (role === "donorCSR" && ngo === 1 && vault.interface.getFunction("donateWithFallback")) {
+    await wait(vault.donateWithFallback(ngo, cat, inr(amt), await inDays(30), 0));
+    log(`${role} → NGO ${ngo} · ₹${amt.toLocaleString("en-IN")} · fallback NGO 0 (Asha) if NGO 1 fails`);
+    continue;
+  }
+  await wait(vault.donate(ngo, cat, inr(amt), await inDays(30)));
   log(`${role} → NGO ${ngo} · ₹${amt.toLocaleString("en-IN")}`);
 }
 

@@ -35,7 +35,9 @@ async function signInvoice(vault, signer, fields) {
     ngoId: fields.ngoId ?? 0,
     invoiceNo: ethers.id(fields.invoiceNo ?? "INV-001"),
     amount: fields.amount,
-    date: fields.date ?? 1_729_000_000,
+    // start of the current chain day: same-day invoices share a date (so duplicates collide), and the
+    // date is never in the future nor before the donations (both are on-chain timeline rules now)
+    date: fields.date ?? Math.floor((await ethers.provider.getBlock("latest")).timestamp / 86400) * 86400,
     category: fields.category ?? Category.Water,
     fileHash: fields.fileHash ?? ethers.id("file-bytes-original"),
   };

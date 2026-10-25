@@ -27,7 +27,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
     enum PayoutStatus { None, Pending, Released, Completed, Challenged, Cancelled }
     /// @dev OverBudget and AmountMismatch are emitted as `Discrepancy` (recorded, not counted toward a
     ///      freeze — stale balances cause them honestly). VendorDoubleSign slashes the vendor, not the NGO.
-    enum FraudReason { DuplicateInvoice, ForgedSignature, OutOfCategory, OverBudget, AmountMismatch, UnregisteredVendor, ChallengeUpheld, VendorDoubleSign, DuplicateFiatProof, UnexplainedTransfer }
+    enum FraudReason { DuplicateInvoice, ForgedSignature, OutOfCategory, OverBudget, AmountMismatch, UnregisteredVendor, ChallengeUpheld, VendorDoubleSign, DuplicateFiatProof, UnexplainedTransfer, ImpossibleTimeline, InvoiceBeforeDonation, ImpactNotProven }
 
     struct NGO {
         address admin;
@@ -141,6 +141,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
     uint256 public constant NGO_BOND = 10_000 ether;    // dINR (18 decimals)
     uint256 public constant VENDOR_STAKE = 5_000 ether;
     uint256 public constant FIELD_STAKE = 2_000 ether;
+    /// @notice An invoice may predate the donations it charges by at most this (reimbursement window).
+    uint64 public constant INVOICE_GRACE = 7 days;
     uint256 public constant CHALLENGE_BOND = 500 ether;
 
     // ─────────────────────────── state ───────────────────────────
@@ -174,6 +176,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
     /// @notice Global bank-reference nullifier set — one bank transfer can't settle two payouts.
     mapping(bytes32 => bool) public bankRefUsed;
     mapping(uint256 => uint64) public releasedAt;
+    mapping(uint256 => uint64) public lotCreatedAt;
+    /// @notice Dead-man switch: lotId → fallback NGO id + 1 (0 = unspent money goes back to the donor).
+    mapping(uint256 => uint256) public fallbackOf;
 
     // ─────────────────────────── events ──────────────────────────
 
@@ -191,6 +196,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
     event Discrepancy(uint256 indexed ngoId, FraudReason reason, bytes32 nullifier, bytes32 fileHash);
     event VendorSlashed(address indexed vendor, uint256 amount, bytes32 nullifier);
     event OffRampRegistered(address indexed agent);
+    event FallbackSet(uint256 indexed lotId, uint256 indexed fallbackNgoId);
+    event LotRedirected(uint256 indexed fromLot, uint256 indexed toLot, uint256 indexed toNgo, uint256 amount);
+    event ImpactExpired(uint256 indexed payoutId, uint256 returned);
     event FieldPartnerRegistered(address indexed partner, bytes32 nameHash, uint256 stake);
     event BatchAttested(bytes32 indexed root, uint256 indexed ngoId, address indexed partner, uint32 cards);
     event FiatSettled(uint256 indexed payoutId, address indexed agent, uint256 fiatAmount, bytes32 bankRefHash, bytes32 payeeHash, uint64 paidAt);
@@ -230,6 +238,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
     error BadBatch();
     error BatchNotAttested();
     error TooManyDeliveries();
+    error BadFallback();
+    error NotRedirectable();
+    error ImpactOpen();
 
     constructor(IERC20 token_, uint64 challengeWindow_, address bridgeGateway_) EIP712("GlassVault", "1") {
         token = token_;
@@ -321,15 +332,50 @@ contract GlassVault is EIP712, ReentrancyGuard {
         nonReentrant
         returns (uint256 lotId)
     {
+        lotId = _newLot(donor, ngoId, category, amount, deadline, sourceChain);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function _newLot(address donor, uint256 ngoId, Category category, uint256 amount, uint64 deadline, uint64 sourceChain)
+        internal
+        returns (uint256 lotId)
+    {
         if (_ngo(ngoId).frozen) revert NGOIsFrozen();
         if (amount == 0) revert ZeroAmount();
         if (deadline < block.timestamp + MIN_PROOF_PERIOD) revert DeadlineTooSoon();
 
         lotId = _lots.length;
         _lots.push(Lot({donor: donor, ngoId: ngoId, category: category, amount: amount, remaining: amount, deadline: deadline, sourceChain: sourceChain}));
+        lotCreatedAt[lotId] = uint64(block.timestamp);
         emit Donated(lotId, ngoId, donor, category, amount, deadline);
+    }
 
-        token.safeTransferFrom(msg.sender, address(this), amount);
+    /// @notice Donate with a dead-man switch: if the NGO is frozen or misses the deadline, anyone can
+    ///         move the unspent money to `fallbackNgoId` (same donor, same purpose) instead of a refund.
+    function donateWithFallback(uint256 ngoId, Category category, uint256 amount, uint64 deadline, uint256 fallbackNgoId)
+        external
+        returns (uint256 lotId)
+    {
+        if (fallbackNgoId == ngoId || _ngo(fallbackNgoId).frozen) revert BadFallback();
+        lotId = _donate(msg.sender, ngoId, category, amount, deadline, uint64(block.chainid));
+        fallbackOf[lotId] = fallbackNgoId + 1;
+        emit FallbackSet(lotId, fallbackNgoId);
+    }
+
+    /// @notice Dead-man switch: once a lot's NGO is frozen or its deadline passed, anyone can move the
+    ///         unspent money into a new lot for the donor's fallback NGO. The money never leaves escrow and
+    ///         keeps its donor and purpose; the new lot gets a fresh proof period of the same length.
+    function redirect(uint256 lotId) external nonReentrant returns (uint256 newLot) {
+        Lot storage l = _lots[lotId];
+        uint256 fb = fallbackOf[lotId];
+        if (fb == 0 || l.remaining == 0) revert NotRedirectable();
+        if (!_ngos[l.ngoId].frozen && block.timestamp <= l.deadline) revert NotRedirectable();
+        uint64 period = l.deadline - lotCreatedAt[lotId];
+        if (period < MIN_PROOF_PERIOD) period = MIN_PROOF_PERIOD;
+        uint256 amount = l.remaining;
+        l.remaining = 0;
+        newLot = _newLot(l.donor, fb - 1, l.category, amount, uint64(block.timestamp) + period, l.sourceChain);
+        emit LotRedirected(lotId, newLot, fb - 1, amount);
     }
 
     // ─────────── ② escrow condition + ③ invoice proof ───────────
@@ -379,6 +425,8 @@ contract GlassVault is EIP712, ReentrancyGuard {
         Vendor memory v = vendors[inv.vendor];
         if (!v.registered) return _flag(inv.ngoId, FraudReason.UnregisteredVendor, nullifier, inv.fileHash);
         if (v.category != inv.category) return _flag(inv.ngoId, FraudReason.OutOfCategory, nullifier, inv.fileHash);
+        // an invoice from the future can't describe goods already delivered
+        if (inv.date > block.timestamp + 1 days) return _flag(inv.ngoId, FraudReason.ImpossibleTimeline, nullifier, inv.fileHash);
 
         // ② escrow conditions on every charged lot
         uint256 total;
@@ -387,6 +435,10 @@ contract GlassVault is EIP712, ReentrancyGuard {
             // expired lots belong to the donor's reclaim right — revert, don't flag (prevents reclaim front-run griefing)
             if (block.timestamp > l.deadline) revert LotExpired();
             if (l.ngoId != inv.ngoId || l.category != inv.category) return _flag(inv.ngoId, FraudReason.OutOfCategory, nullifier, inv.fileHash);
+            // money can't have paid for spending long before it was donated
+            if (inv.date + INVOICE_GRACE < lotCreatedAt[shares[i].lotId]) {
+                return _discrepancy(inv.ngoId, FraudReason.InvoiceBeforeDonation, nullifier, inv.fileHash);
+            }
             if (shares[i].amount > l.remaining) return _discrepancy(inv.ngoId, FraudReason.OverBudget, nullifier, inv.fileHash);
             total += shares[i].amount;
         }
@@ -528,6 +580,25 @@ contract GlassVault is EIP712, ReentrancyGuard {
         _flag(p.ngoId, FraudReason.UnexplainedTransfer, p.nullifier, p.fileHash);
         emit UnexplainedTransfer(payoutId, p.vendor, msg.sender, reward);
         if (reward > 0) token.safeTransfer(msg.sender, reward);
+    }
+
+    /// @notice Deadline to prove impact (deliveries, and fiat for off-ramp payouts) after the 70% release.
+    function impactDeadline(uint256 payoutId) public view returns (uint64) {
+        uint64 t = releasedAt[payoutId];
+        return t == 0 ? 0 : t + 4 * challengeWindow;
+    }
+
+    /// @notice If impact is never proven, the final 30% must not sit in escrow forever: after the deadline
+    ///         anyone returns it to the donors' lots. Recorded as a discrepancy (beneficiaries may simply
+    ///         not have been reached), and the NGO's trust score drops because the payout never completes.
+    function expireImpact(uint256 payoutId) external nonReentrant {
+        Payout storage p = _payout(payoutId);
+        if (p.status != PayoutStatus.Released || _impactProven(payoutId, p)) revert BadPayout();
+        if (block.timestamp <= impactDeadline(payoutId)) revert ImpactOpen();
+        uint256 returned = p.amount - p.paid;
+        _unwind(payoutId, p);
+        emit ImpactExpired(payoutId, returned);
+        _discrepancy(p.ngoId, FraudReason.ImpactNotProven, p.nullifier, p.fileHash);
     }
 
     /// @dev Root ④ is met when enough beneficiaries confirmed — and, for off-ramp payouts, the rupee

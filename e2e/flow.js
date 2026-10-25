@@ -42,6 +42,9 @@ let page = await open("priya", "/donate");
 await page.getByText("Asha Foundation").first().click();
 await page.getByRole("button", { name: "Water" }).click();
 await page.locator('input[type="number"]').first().fill("5000");
+// dead-man switch: if Asha is frozen or misses the deadline, unspent funds go to Shadow Trust
+await page.getByRole("button", { name: "Send it to another NGO" }).click();
+await page.getByRole("button", { name: /^Shadow Trust · trust/ }).click();
 await page.getByRole("button", { name: "Donate", exact: true }).click();
 await page.waitForURL(/\/passport\/\d+/, { timeout: 30_000 });
 const lotId = Number(page.url().split("/").pop());
@@ -50,6 +53,8 @@ await page.screenshot({ path: shot("flow-1-passport"), fullPage: true });
 const lot = (await api("/api/state")).lots[lotId];
 step(`donated → passport #${lotId} · on-chain lot: ₹${lot.amount} ${lot.category} (lots ${before} → ${lotId + 1})`);
 if (lot.amount !== 5000 || lot.category !== "Water") throw new Error("lot mismatch");
+if (lot.fallbackNgoId !== 1) throw new Error(`fallback not recorded on-chain (fallbackNgoId=${lot.fallbackNgoId})`);
+step("fallback NGO recorded on-chain: Shadow Trust");
 await page.close();
 
 // 2 — field partner issues and attests 5 cards for Asha Foundation (the NGO can't issue its own)

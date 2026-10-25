@@ -59,7 +59,8 @@ export class Watcher {
       }
     }
 
-    // 2. impossible timeline — invoice dated in the future
+    // 2. impossible timeline — invoice dated in the future. The contract now rejects these on-chain
+    //    (ImpossibleTimeline flag); this check stays as evidence for deployments without that rule.
     const invoice = Object.values(db.invoices).find((i) => i.fileHash === ev.args.fileHash && i.vendor === ev.args.vendor);
     if (invoice && invoice.date > now + 86400) {
       evidence.push({ check: "future-dated-invoice", detail: `Invoice dated ${new Date(invoice.date * 1000).toISOString().slice(0, 10)} is in the future` });

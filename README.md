@@ -19,7 +19,7 @@ role is a funded wallet on the local chain and every action is a real signed tra
 
 | Command | What it does |
 |---|---|
-| `npm test` | 54 contract tests (happy path + every attack) |
+| `npm test` | 60 contract tests (happy path + every attack) |
 | `npm run benchmark` | 100 receipts, 30% fraudulent, against fresh contracts on an isolated chain |
 | `npm run attack` | Live red-team attack on the running chain (also available as buttons in Watchtower) |
 | `npm run e2e` / `npm run e2e:attack` | Headless browser tests that drive the real UI |
@@ -47,9 +47,14 @@ role is a funded wallet on the local chain and every action is a real signed tra
 | Published report ≠ ledger, same invoice told to many donors | Report Reconciler | Over-claims, over-attribution, double counting flagged line by line |
 | Same bank transfer (UTR) used to prove two fiat payouts | Global bank-reference nullifier (on-chain) | Fraud flag |
 | Money released to a payment agent but never proven paid in rupees | `flagUnsettled()` — anyone, after the deadline | Unexplained-transfer flag; agent's stake → reporter; unpaid 30% back to donors |
+| Invoice dated in the future | Contract timeline rule | Fraud flag |
+| Invoice dated more than 7 days before the donations it charges | Contract timeline rule | Recorded discrepancy (not counted toward freeze) |
+| Payout released but deliveries never proven | `expireImpact()` — anyone, after the impact deadline | Unpaid 30% back to donors; discrepancy recorded; payout never counts as completed |
 | Money in escrow that no rule explains | Escrow ledger check (indexer): vault balance = lots + reserved payouts + bonds + stakes + challenge bonds | Any gap shown publicly in Watchtower |
 
 **2 fraud flags → the contract freezes the NGO.** Pending payouts unwind and donors reclaim every unpaid rupee.
+
+**Dead-man switch.** A donor can name a fallback NGO (`donateWithFallback`). If the NGO is frozen or misses the proof deadline, anyone can `redirect()` the unspent money into a new lot for the fallback — same donor, same purpose, never leaving escrow. Without a fallback the donor reclaims it. Donated money can't get stuck.
 
 The watcher bot holds no special power: it calls the same public `challenge()` any citizen can, with
 its own bond. Challenges are decided by the donors whose money funds that payout, weighted by amount,

@@ -37,6 +37,7 @@ const IDLE = {
   Watcher: "No payouts are open to challenge right now.",
 };
 
+const redirectable = (state, l) => l.fallbackNgoId != null && !state.ngos[l.fallbackNgoId]?.frozen;
 const fundedBy = (state, p, address) => p.shares.some((s) => sameAddr(state.lots[s.lotId]?.donor, address));
 
 const TASKS = {
@@ -44,9 +45,12 @@ const TASKS = {
     const lots = state.lots.filter((l) => sameAddr(l.donor, me));
     if (!lots.length) return [{ text: "Make your first donation", to: "/donate" }];
     const votes = state.payouts.filter((p) => p.status === "Challenged" && p.challenge && now < p.challenge.voteEnd && fundedBy(state, p, me));
-    const refunds = lots.filter((l) => l.remaining > 0 && (state.ngos[l.ngoId]?.frozen || now > l.deadline));
+    const expired = lots.filter((l) => l.remaining > 0 && l.redirectedTo == null && (state.ngos[l.ngoId]?.frozen || now > l.deadline));
+    const redirects = expired.filter((l) => redirectable(state, l));
+    const refunds = expired.filter((l) => !redirectable(state, l));
     return [
       ...votes.map((p) => ({ text: `Vote on disputed payout #${p.id}`, to: "/watchtower", urgent: true })),
+      ...redirects.map((l) => ({ text: `Move unspent ${inr(l.remaining)} from donation #${l.id} to ${state.ngos[l.fallbackNgoId].name}`, to: `/passport/${l.id}`, urgent: true })),
       ...refunds.map((l) => ({ text: `Reclaim ${inr(l.remaining)} from donation #${l.id}`, to: `/passport/${l.id}`, urgent: true })),
       { text: "Donate again", to: "/donate" },
     ];
@@ -93,8 +97,12 @@ const TASKS = {
   Watcher(state, me, now) {
     const open = state.payouts.filter((p) => p.status === "Pending" && now < p.releaseAt && !state.ngos[p.ngoId]?.frozen);
     const unsettled = state.payouts.filter((p) => p.offRamp && p.status === "Released" && !p.fiat && p.fiatDeadline && now > p.fiatDeadline);
+    const unproven = state.payouts.filter((p) => p.status === "Released" && p.impactDeadline && !p.impactExpired && p.deliveries < p.deliveriesRequired && now > p.impactDeadline);
+    const stuckLots = state.lots.filter((l) => l.remaining > 0 && l.redirectedTo == null && redirectable(state, l) && (state.ngos[l.ngoId]?.frozen || now > l.deadline));
     return [
       ...unsettled.map((p) => ({ text: `Payout #${p.id}: never paid out in rupees — flag it`, to: "/watchtower", urgent: true })),
+      ...unproven.map((p) => ({ text: `Return unproven 30% of payout #${p.id}`, to: "/watchtower", urgent: true })),
+      ...stuckLots.map((l) => ({ text: `Redirect expired donation #${l.id}`, to: "/watchtower", urgent: true })),
       ...open.map((p) => ({ text: `Review payout #${p.id} before its window closes`, to: "/watchtower" })),
     ];
   },

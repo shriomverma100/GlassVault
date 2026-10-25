@@ -54,7 +54,7 @@ export function lotSpine(lot, ngo, payouts) {
 }
 
 const CAT = ["Water", "Medical", "Education"];
-const REASON = ["duplicate invoice", "forged signature", "out-of-category spend", "over-budget charge", "amount mismatch", "unregistered vendor", "challenge upheld", "vendor signed the same invoice for two NGOs", "same bank transfer used to prove two payouts", "money released but never paid out in rupees"];
+const REASON = ["duplicate invoice", "forged signature", "out-of-category spend", "over-budget charge", "amount mismatch", "unregistered vendor", "challenge upheld", "vendor signed the same invoice for two NGOs", "same bank transfer used to prove two payouts", "money released but never paid out in rupees", "invoice dated in the future", "invoice older than the donation it charges", "delivery never proven by the deadline"];
 
 /// One human sentence per chain event, for the live ticker and timelines.
 export function eventSentence(ev, label, state) {
@@ -103,6 +103,12 @@ export function eventSentence(ev, label, state) {
       return `Bridge delivered nonce ${a.nonce} as lot #${a.lotId}`;
     case "DonationSwapped":
       return `${label(a.donor)} swapped ${Number(BigInt(a.ethIn ?? 0)) / 1e18} ETH → ${rs(a.dinrOut)} on chain B for a donation`;
+    case "FallbackSet":
+      return `Donation #${a.lotId}: unspent funds fall back to ${ngo(a.fallbackNgoId)}`;
+    case "LotRedirected":
+      return `Donation #${a.fromLot} moved ${rs(a.amount)} to ${ngo(a.toNgo)} as donation #${a.toLot}`;
+    case "ImpactExpired":
+      return `Payout #${a.payoutId}: delivery never proven · ${rs(a.returned)} returned to donors`;
     case "FieldPartnerRegistered":
       return `${label(a.partner)} registered as an independent field partner`;
     case "BatchAttested":
@@ -120,7 +126,7 @@ export function eventSentence(ev, label, state) {
 
 /// Events that are bad news render dark; good news yellow; the rest neutral.
 export function eventTone(name) {
-  if (["FraudFlagged", "NGOFrozen", "VendorSlashed", "UnexplainedTransfer"].includes(name)) return "bad";
+  if (["FraudFlagged", "NGOFrozen", "VendorSlashed", "UnexplainedTransfer", "ImpactExpired"].includes(name)) return "bad";
   if (["ImpactVerified", "PayoutReleased", "DeliveryConfirmed", "Donated", "CrossChainDonation", "FiatSettled", "DonationSwapped"].includes(name)) return "good";
   return "neutral";
 }

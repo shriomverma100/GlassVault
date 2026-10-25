@@ -12,6 +12,9 @@ export const REASONS = {
   VendorDoubleSign: { title: "Vendor double-signed", text: "Same invoice signed for two NGOs — vendor stake slashed" },
   DuplicateFiatProof: { title: "Same bank transfer used twice", text: "One rupee payment claimed as proof for two payouts" },
   UnexplainedTransfer: { title: "Unexplained transfer", text: "Money released to a payment agent but never proven paid in rupees" },
+  ImpossibleTimeline: { title: "Impossible timeline", text: "Invoice dated in the future" },
+  InvoiceBeforeDonation: { title: "Invoice older than the donation", text: "Invoice dated well before the money it claims arrived" },
+  ImpactNotProven: { title: "Delivery never proven", text: "No beneficiary proof by the impact deadline — unpaid 30% returned" },
 };
 
 export const ipfsHref = (uri) => (uri?.startsWith("ipfs://") ? `/ipfs/${uri.slice(7)}` : uri);

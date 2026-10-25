@@ -91,6 +91,11 @@ function DonateForm() {
   }, [payEth, eth, c]);
 
   const ngo = state.ngos[ngoId];
+  // dead-man switch target: refund the donor (default) or move unspent funds to another NGO
+  const fallbackChoices = state.ngos.filter((n) => !n.frozen && n.id !== ngoId);
+  const [fallbackMode, setFallbackMode] = useState("refund");
+  const [fallbackPick, setFallbackPick] = useState(null);
+  const fallbackId = fallbackMode === "ngo" ? (fallbackChoices.find((n) => n.id === fallbackPick) ?? fallbackChoices[0])?.id ?? null : null;
   const amt = payEth ? (quote ?? 0) : Number(amount);
   const nDays = Math.max(1, Math.floor(Number(days) || 0));
   const balance = balances[source];
@@ -107,7 +112,9 @@ function DonateForm() {
       if (source === "A") {
         const vaultAddr = chain.A.GlassVault.address;
         if ((await c.dinr.allowance(address, vaultAddr)) < wei) await tx("Approve dINR for the vault", () => c.dinr.approve(vaultAddr, wei));
-        const rc = await tx(`Donate ₹${amt.toLocaleString("en-IN")} to ${ngo.name}`, () => c.vault.donate(ngoId, cat, wei, deadline));
+        const rc = await tx(`Donate ₹${amt.toLocaleString("en-IN")} to ${ngo.name}`, () =>
+          fallbackId === null ? c.vault.donate(ngoId, cat, wei, deadline) : c.vault.donateWithFallback(ngoId, cat, wei, deadline, fallbackId),
+        );
         const ev = rc.logs.map((l) => c.vault.interface.parseLog(l)).find((p) => p?.name === "Donated");
         if (ev) navigate(`/passport/${Number(ev.args.lotId)}`);
       } else if (payEth) {
@@ -237,6 +244,38 @@ function DonateForm() {
             </p>
           )}
         </Section>
+
+        {source === "A" && (
+          <Section eyebrow="Step 4" title="If this NGO is frozen or misses the deadline">
+            <Segmented
+              id="fallback"
+              value={fallbackMode}
+              onChange={setFallbackMode}
+              options={[
+                { value: "refund", label: "Refund me" },
+                { value: "ngo", label: "Send it to another NGO" },
+              ]}
+            />
+            {fallbackMode === "ngo" && (
+              <div className="mt-4">
+                {fallbackChoices.length ? (
+                  <Segmented
+                    id="fallback-ngo"
+                    value={fallbackId}
+                    onChange={setFallbackPick}
+                    options={fallbackChoices.map((n) => ({ value: n.id, label: `${n.name} · trust ${n.trust}` }))}
+                  />
+                ) : (
+                  <p className="text-[14px] text-ash">No other active NGO to pick — your unspent funds will be refunded.</p>
+                )}
+              </div>
+            )}
+            <p className="mt-3 text-[14px] text-ash">
+              Nobody can keep your money: unspent funds either come back to you or move to the NGO you pick — anyone can trigger it once the deadline passes. The
+              purpose ({category.toLowerCase()}) stays the same.
+            </p>
+          </Section>
+        )}
       </div>
 
       <div className="lg:sticky lg:top-[112px] lg:self-start">
@@ -253,7 +292,10 @@ function DonateForm() {
             <Rule icon={<ShieldCheckIcon size={16} />}>Each payout needs an invoice signed by a staked vendor; a reused or forged one is flagged.</Rule>
             <Rule icon={<HourglassIcon size={16} />}>Every payout waits in a public challenge window; you vote if it's disputed.</Rule>
             <Rule icon={<QrIcon size={16} />}>70% on the invoice, the last 30% only after beneficiaries prove delivery.</Rule>
-            <Rule icon={<RefundIcon size={16} />}>No proof in {nDays} day{nDays === 1 ? "" : "s"}, or the NGO is frozen → you reclaim what's unspent.</Rule>
+            <Rule icon={<RefundIcon size={16} />}>
+              No proof in {nDays} day{nDays === 1 ? "" : "s"}, or the NGO is frozen →{" "}
+              {fallbackId === null ? "you reclaim what's unspent." : `what's unspent moves to ${state.ngos[fallbackId]?.name}.`}
+            </Rule>
           </ul>
           <Button variant="signal" className="mt-6 w-full" disabled={!valid || busy || !!relaying} onClick={submit}>
             {busy ? "Confirming…" : source === "A" ? "Donate" : payEth ? "Swap, bridge and donate" : "Send over bridge"}
