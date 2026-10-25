@@ -19,7 +19,7 @@ role is a funded wallet on the local chain and every action is a real signed tra
 
 | Command | What it does |
 |---|---|
-| `npm test` | 38 contract tests (happy path + every attack) |
+| `npm test` | 49 contract tests (happy path + every attack) |
 | `npm run benchmark` | 100 receipts, 30% fraudulent, against fresh contracts on an isolated chain |
 | `npm run attack` | Live red-team attack on the running chain (also available as buttons in Watchtower) |
 | `npm run e2e` / `npm run e2e:attack` | Headless browser tests that drive the real UI |
@@ -30,10 +30,10 @@ role is a funded wallet on the local chain and every action is a real signed tra
 
 | Root | How it is enforced | Where you see it |
 |---|---|---|
-| **① Inbound donation** | `donate()` creates a lot tagged with donor, NGO, category, deadline and source chain. Bridged donations from chain B keep the original donor and source chain. | Donate, Passport |
+| **① Inbound donation** | `donate()` creates a lot tagged with donor, NGO, category, deadline and source chain. Multi-hop donations — **ETH swapped to dINR on chain B, then bridged to chain A** (`sendDonationWithSwap`) — keep the original donor, asset and source chain; the swap and bridge hops are reconstructed from events alone. | Donate, Passport journey |
 | **② Escrow condition** | Category must match, shares must fit each lot's budget and add up to the invoice, lot must not be expired. A challenge window opens; after it, anyone can release 70%. No admin role exists. Missed deadline or a freeze → donors reclaim. | NGO console, Passport |
-| **③ Off-chain invoice proof** | Vendor signs the invoice fields (EIP-712). File hash on-chain, file stored by IPFS CID. A field-level **nullifier** `keccak(vendor, invoiceNo, date, amount)` is global across all NGOs, so a re-scanned invoice still collides. | Vendor portal, NGO pre-checks |
-| **④ Impact verification** | Beneficiaries hold QR cards with a secret. Only a Merkle root of commitments goes on-chain; delivery = Merkle proof + one-time delivery nullifier. The final 30% is paid only after enough deliveries; donors receive a soulbound Proof-of-Impact token. | Field app, Passport |
+| **③ Off-chain invoice proof** | Vendor signs the invoice fields (EIP-712). File hash on-chain, file stored by IPFS CID. A field-level **nullifier** `keccak(vendor, invoiceNo, date, amount)` is global across all NGOs, so a re-scanned invoice still collides. **Fiat off-ramp:** when money is spent at a local cash/bank-only vendor, a staked payment agent signs a `FiatSettlement` (amount, hashed bank UTR, hashed payee, date); a bank reference can settle only one payout. | Vendor portal, NGO pre-checks |
+| **④ Impact verification** | Beneficiaries hold QR cards with a secret. Only a Merkle root of commitments goes on-chain; delivery = Merkle proof + one-time delivery nullifier. The final 30% is paid only after enough deliveries — and, for off-ramp payouts, after the rupee payment is proven; donors receive a soulbound Proof-of-Impact token. | Field app, Passport |
 
 ## How fraud is caught (without a central auditor)
 
@@ -45,6 +45,9 @@ role is a funded wallet on the local chain and every action is a real signed tra
 | Spending outside the declared category / over budget | Escrow checks (on-chain) | Fraud flag |
 | Real vendor colluding, re-using an old receipt photo | Watcher bot: 256-bit perceptual hash → files a bonded `challenge()` | Donors vote; upheld → payout cancelled, NGO bond + vendor stake slashed to the challenger |
 | Published report ≠ ledger, same invoice told to many donors | Report Reconciler | Over-claims, over-attribution, double counting flagged line by line |
+| Same bank transfer (UTR) used to prove two fiat payouts | Global bank-reference nullifier (on-chain) | Fraud flag |
+| Money released to a payment agent but never proven paid in rupees | `flagUnsettled()` — anyone, after the deadline | Unexplained-transfer flag; agent's stake → reporter; unpaid 30% back to donors |
+| Money in escrow that no rule explains | Escrow ledger check (indexer): vault balance = lots + reserved payouts + bonds + stakes + challenge bonds | Any gap shown publicly in Watchtower |
 
 **2 fraud flags → the contract freezes the NGO.** Pending payouts unwind and donors reclaim every unpaid rupee.
 
@@ -81,6 +84,8 @@ chain B :8546 ── DINR · BridgeGateway                     ├ relayer   —
 
 ## Honest limitations
 
+- **Fiat off-ramp trust.** The chain can't see a bank account, so a rupee payment is proven by the staked agent's signature. Reusing a bank reference is caught, an unsettled payout is flagged and the agent's stake slashed — but an agent willing to lose its stake could sign a fake UTR once. Production: a bank/UPI webhook signature or a zkTLS proof of the bank statement.
+- **DEX rate is fixed** (local stand-in); production swaps through a real pool, which the tracer reads the same way.
 - **Local chains.** Two Hardhat nodes stand in for two real networks; demo roles use the public Hardhat dev mnemonic.
 - **Bridge relayer is one trusted key.** Replays are blocked on-chain; production would use a light client or Chainlink CCIP. A failed delivery has no refund path on the source chain yet.
 - **NGO-issued QR secrets.** The NGO generates beneficiary cards, so in theory it could confirm its own deliveries. In production cards come from an independent field partner.

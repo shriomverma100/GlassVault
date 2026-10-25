@@ -8,6 +8,7 @@ import Court from "../components/watch/Court";
 import WatcherFeed from "../components/watch/WatcherFeed";
 import Reconciler from "../components/watch/Reconciler";
 import RedTeam from "../components/watch/RedTeam";
+import OffRampWatch from "../components/watch/OffRampWatch";
 
 /// The theatre: every fraud attempt, every dispute, the watcher's evidence, and the red team.
 export default function Watchtower() {
@@ -35,6 +36,9 @@ export default function Watchtower() {
       </motion.div>
       <motion.div variants={fadeUp}>
         <Court />
+      </motion.div>
+      <motion.div variants={fadeUp}>
+        <OffRampWatch />
       </motion.div>
       <motion.div variants={fadeUp}>
         <WatcherFeed />

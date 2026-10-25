@@ -4,7 +4,7 @@ import { db } from "./store.js";
 
 const CATEGORY = ["Water", "Medical", "Education"];
 const PAYOUT_STATUS = ["None", "Pending", "Released", "Completed", "Challenged", "Cancelled"];
-const FRAUD_REASON = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign"];
+const FRAUD_REASON = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign", "DuplicateFiatProof", "UnexplainedTransfer"];
 
 const fmt = (v) => Number(ethers.formatUnits(v, 18)); // dINR → rupees (demo amounts stay well inside float precision)
 
@@ -14,12 +14,19 @@ export class Indexer extends EventEmitter {
   constructor({ depA, depB, providerA, providerB }) {
     super();
     this.vault = new ethers.Contract(depA.GlassVault.address, depA.GlassVault.abi, providerA);
+    this.tokenA = new ethers.Contract(depA.DINR.address, depA.DINR.abi, providerA);
     this.gatewayA = new ethers.Contract(depA.BridgeGateway.address, depA.BridgeGateway.abi, providerA);
     this.gatewayB = new ethers.Contract(depB.BridgeGateway.address, depB.BridgeGateway.abi, providerB);
+    // swaps are read from the exchange itself on both chains (older deployments have no MockDEX)
+    const dex = (dep, provider) => (dep.MockDEX ? [new ethers.Contract(dep.MockDEX.address, dep.MockDEX.abi, provider)] : []);
     this.sources = [
-      { chain: depA.chainId, provider: providerA, contracts: [this.vault, this.gatewayA], from: 0 },
-      { chain: depB.chainId, provider: providerB, contracts: [this.gatewayB], from: 0 },
+      { chain: depA.chainId, provider: providerA, contracts: [this.vault, this.gatewayA, ...dex(depA, providerA)], from: 0 },
+      { chain: depB.chainId, provider: providerB, contracts: [this.gatewayB, ...dex(depB, providerB)], from: 0 },
     ];
+    // multi-hop reconstruction, purely from events: source-chain send (+ swap) → relay → chain-A lot
+    this.hops = { swapped: new Map(), sent: new Map(), delivered: new Map() }; // "chain:nonce" → hop; delivered: lotId → hop
+    this.fiat = new Map(); // payoutId → fiat settlement attested by the off-ramp agent
+    this.unexplained = new Map(); // payoutId → unsettled off-ramp payout reported by a watcher
     this.events = [];
     this.eventIds = new Set(); // a poll that fails half-way re-reads logs it already ingested
     this.flags = []; // fraud caught: NGO flags + vendor slashes
@@ -103,11 +110,21 @@ export class Indexer extends EventEmitter {
     if (parsed.name === "ChallengeResolved" && args.upheld) this.challengeRewards += fmt(args.reward);
     if (parsed.name === "Reclaimed") this.reclaimed.set(Number(args.lotId), (this.reclaimed.get(Number(args.lotId)) ?? 0) + fmt(args.amount));
     if (parsed.name === "VendorRegistered") this.vendors.set(args.vendor, true);
+    if (parsed.name === "OffRampRegistered") this.vendors.set(args.agent, true);
+    if (parsed.name === "DonationSwapped") this.hops.swapped.set(`${src.chain}:${args.nonce}`, { dex: args.dex, ethIn: fmt(args.ethIn), dinrOut: fmt(args.dinrOut), tx: ev.tx, time: ev.time });
+    if (parsed.name === "DonationSent") this.hops.sent.set(`${src.chain}:${args.nonce}`, { donor: args.donor, amount: fmt(args.amount), destChain: Number(args.destChain), tx: ev.tx, time: ev.time });
+    if (parsed.name === "DonationDelivered") this.hops.delivered.set(Number(args.lotId), { sourceChain: Number(args.sourceChain), nonce: args.nonce, tx: ev.tx, time: ev.time });
+    if (parsed.name === "FiatSettled") {
+      this.fiat.set(Number(args.payoutId), { agent: args.agent, fiatAmount: fmt(args.fiatAmount), bankRefHash: args.bankRefHash, payeeHash: args.payeeHash, paidAt: Number(args.paidAt), tx: ev.tx });
+    }
+    if (parsed.name === "UnexplainedTransfer") this.unexplained.set(Number(args.payoutId), { agent: args.agent, reporter: args.reporter, reward: fmt(args.reward), tx: ev.tx });
     this.emit("event", ev);
   }
 
   async snapshot() {
     const v = this.vault;
+    // views added in later versions — an older deployment's ABI simply lacks them
+    const has = (fn) => !!v.interface.getFunction(fn);
     const [nNgos, nLots, nPayouts] = await v.counts();
 
     const ngos = await Promise.all(
@@ -141,13 +158,20 @@ export class Indexer extends EventEmitter {
           remaining: fmt(l.remaining),
           deadline: Number(l.deadline),
           sourceChain: Number(l.sourceChain),
+          origin: this.origin(id),
         };
       }),
     );
 
     const payouts = await Promise.all(
       [...Array(Number(nPayouts)).keys()].map(async (id) => {
-        const [p, shares] = await Promise.all([v.payout(id), v.payoutShares(id)]);
+        const [p, shares, releasedAt, fiatDeadline] = await Promise.all([
+          v.payout(id),
+          v.payoutShares(id),
+          has("releasedAt") ? v.releasedAt(id) : 0n,
+          has("fiatDeadline") ? v.fiatDeadline(id) : 0n,
+        ]);
+        const vendor = await v.vendors(p.vendor);
         const status = PAYOUT_STATUS[Number(p.status)];
         const ch = await v.challengeOf(id);
         const challenge =
@@ -181,6 +205,11 @@ export class Indexer extends EventEmitter {
           deliveries: Number(p.deliveries),
           shares: shares.map((s) => ({ lotId: Number(s.lotId), amount: fmt(s.amount) })),
           challenge,
+          offRamp: Boolean(vendor.offRamp),
+          releasedAt: Number(releasedAt),
+          fiatDeadline: Number(fiatDeadline),
+          fiat: this.fiat.get(id) ?? null,
+          unexplained: this.unexplained.get(id) ?? null,
         };
       }),
     );
@@ -188,11 +217,24 @@ export class Indexer extends EventEmitter {
     const vendors = await Promise.all(
       [...this.vendors.keys()].map(async (addr) => {
         const x = await v.vendors(addr);
-        return { address: addr, registered: x.registered, category: CATEGORY[Number(x.category)], nameHash: x.nameHash, stake: fmt(x.stake) };
+        return { address: addr, registered: x.registered, category: CATEGORY[Number(x.category)], nameHash: x.nameHash, stake: fmt(x.stake), slashed: Boolean(x.slashed), offRamp: Boolean(x.offRamp) };
       }),
     );
 
     const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
+
+    // Escrow ledger: every rupee the vault holds must belong to a lot, an open payout, a bond, a stake
+    // or a challenge bond. A gap is money that entered or left escrow without an on-chain reason.
+    const [vaultBal, challengeBond] = await Promise.all([this.tokenA.balanceOf(v.target), v.CHALLENGE_BOND()]);
+    const openChallenges = payouts.filter((p) => p.challenge && !p.challenge.resolved).length;
+    const accounted =
+      sum(lots, (l) => l.remaining) +
+      sum(payouts.filter((p) => !["Completed", "Cancelled"].includes(p.status)), (p) => p.amount - p.paid) +
+      sum(ngos, (n) => n.bond) +
+      sum(vendors, (x) => x.stake) +
+      openChallenges * fmt(challengeBond);
+    const vaultBalance = fmt(vaultBal);
+    const ledger = { vaultBalance, accounted, gap: Math.round((vaultBalance - accounted) * 100) / 100 };
     const stats = {
       tracked: sum(lots, (l) => l.amount),
       inEscrow: sum(lots, (l) => l.remaining) + sum(payouts.filter((p) => !["Cancelled"].includes(p.status)), (p) => p.amount - p.paid),
@@ -203,9 +245,35 @@ export class Indexer extends EventEmitter {
       paidToWatchers: this.challengeRewards,
       frozenNgos: ngos.filter((n) => n.frozen).length,
       verifiedPct: payouts.length ? Math.round((100 * payouts.filter((p) => p.status === "Completed").length) / payouts.length) : 0,
+      fiatSettled: sum(payouts, (p) => p.fiat?.fiatAmount ?? 0),
+      unexplainedTransfers: payouts.filter((p) => p.unexplained).length,
+      ledger,
     };
 
     this.state = { ngos, lots, payouts, vendors, flags: this.flags, discrepancies: this.discrepancies, stats, updatedAt: Date.now() };
+  }
+
+  /// How a bridged lot got here, hop by hop: (swap →) send on the source chain → relay → lot.
+  /// Rebuilt from public events alone — the NGO reports none of it.
+  origin(lotId) {
+    const d = this.hops.delivered.get(lotId);
+    if (!d) return null;
+    const key = `${d.sourceChain}:${d.nonce}`;
+    const sent = this.hops.sent.get(key);
+    const swap = this.hops.swapped.get(key);
+    return {
+      sourceChain: d.sourceChain,
+      nonce: Number(d.nonce),
+      asset: swap ? "ETH" : "dINR",
+      ethIn: swap?.ethIn ?? null,
+      dinrOut: swap?.dinrOut ?? sent?.amount ?? null,
+      dex: swap?.dex ?? null,
+      swapTx: swap?.tx ?? null,
+      sendTx: sent?.tx ?? null,
+      deliverTx: d.tx,
+      sentAt: sent?.time ?? null,
+      deliveredAt: d.time,
+    };
   }
 
   /// Sankey data: donor → NGO → category → vendor, link status = verified | pending | flagged | frozen | refunded.

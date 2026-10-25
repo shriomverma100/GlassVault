@@ -5,7 +5,7 @@ import { api, ipfsUrl } from "../lib/api";
 import { useApp } from "../lib/store";
 import { CATEGORIES, CAT } from "../lib/chain";
 import { fadeUp, stagger } from "../lib/motion";
-import { Button, Card, Empty, Field, HashText, Input, KV, Rupees, RoleGate, Section, Segmented, StatusBadge } from "../components/ui/kit";
+import { Button, Card, Countdown, Empty, Field, HashText, Input, KV, Rupees, RoleGate, Section, Segmented, StatusBadge } from "../components/ui/kit";
 import { IconOrb } from "../components/ui/primitives";
 import { CategoryIcon, CrossIcon, InvoiceIcon, UploadIcon } from "../components/icons";
 import { sameAddr, useApiList } from "../components/ops/shared";
@@ -32,7 +32,11 @@ function Portal() {
           <span className="text-[13px] text-graphite">Vendor portal</span>
           <h1 className="font-display text-[56px] leading-none font-normal tracking-tight">Issue signed invoices</h1>
           <div className="mt-3 flex items-center gap-2">
-            {me?.registered ? <StatusBadge status="Active" label={`Registered · ${me.category}`} /> : <StatusBadge status={me ? "Fraud" : "Pending"} label={me ? "Stake slashed — deregistered" : "Not registered"} />}
+            {me?.registered ? (
+              <StatusBadge status="Active" label={`${me.offRamp ? "Fiat payment agent" : "Supplier"} · ${me.category}`} />
+            ) : (
+              <StatusBadge status={me ? "Fraud" : "Pending"} label={me ? "Stake slashed — deregistered" : "Not registered"} />
+            )}
             <HashText value={address} />
           </div>
         </div>
@@ -42,6 +46,12 @@ function Portal() {
           <Big label="Invoices" value={invoices.length} />
         </div>
       </motion.section>
+
+      {me?.registered && me.offRamp && (
+        <motion.div variants={fadeUp}>
+          <SettleFiat payouts={payouts} />
+        </motion.div>
+      )}
 
       <motion.div variants={fadeUp}>{me?.registered ? <IssueInvoice vendor={me} onIssued={reload} /> : <Register />}</motion.div>
 
@@ -93,6 +103,7 @@ function Big({ label, value }) {
 /// Stake + register. The stake is what a fake vendor loses when donors uphold a challenge.
 function Register() {
   const { c, tx } = useApp("c", "tx");
+  const [role, setRole] = useState("supplier");
   const [cat, setCat] = useState("Water");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -101,7 +112,8 @@ function Register() {
     try {
       const stake = await c.vault.VENDOR_STAKE();
       await tx("Approve vendor stake", () => c.dinr.approve(c.vault.target, stake));
-      await tx("Register vendor", () => c.vault.registerVendor(CAT[cat], ethers.id(name)));
+      if (role === "agent") await tx("Register fiat payment agent", () => c.vault.registerOffRamp(CAT[cat], ethers.id(name)));
+      else await tx("Register vendor", () => c.vault.registerVendor(CAT[cat], ethers.id(name)));
     } catch {
       // toasted
     } finally {
@@ -112,6 +124,23 @@ function Register() {
     <Section eyebrow="Registration" title="Stake to sign invoices">
       <Card className="grid grid-cols-[1fr_auto] items-end gap-6 p-6">
         <div className="flex flex-col gap-4">
+          <Field label="How you get paid (locked after registration)">
+            <Segmented
+              id="vrole"
+              value={role}
+              onChange={setRole}
+              options={[
+                { value: "supplier", label: "Supplier · paid in dINR" },
+                { value: "agent", label: "Fiat payment agent (off-ramp)" },
+              ]}
+            />
+          </Field>
+          {role === "agent" && (
+            <p className="max-w-[620px] text-[14px] text-ash">
+              You receive dINR from escrow and pay local shops in rupees by bank transfer. For every payout you must sign a record of that bank transfer, or anyone can
+              flag it as an unexplained transfer and take your stake.
+            </p>
+          )}
           <Field label="Category you supply (locked after registration)">
             <Segmented id="vreg" value={cat} onChange={setCat} options={CATEGORIES.map((x) => ({ value: x, label: x, icon: <CategoryIcon category={x} /> }))} />
           </Field>
@@ -120,7 +149,7 @@ function Register() {
           </Field>
         </div>
         <Button variant="signal" disabled={!name || busy} onClick={go}>
-          Stake ₹5,000 and register
+          {role === "agent" ? "Stake ₹5,000 and register as agent" : "Stake ₹5,000 and register"}
         </Button>
       </Card>
     </Section>
@@ -252,5 +281,106 @@ function IssueInvoice({ vendor, onIssued }) {
         </Card>
       </div>
     </Section>
+  );
+}
+
+/// Off-ramp agents: prove each released payout was paid out to a local vendor in rupees. The signed
+/// record links the bank transfer (only its hash) to the on-chain payout; a bank reference can back
+/// only one payout, and a payout left unsettled past its deadline can be flagged by anyone.
+function SettleFiat({ payouts }) {
+  const due = payouts.filter((p) => p.status === "Released" && !p.fiat);
+  const settled = payouts.filter((p) => p.fiat);
+  return (
+    <Section eyebrow="Fiat off-ramp" title="Settle payouts in rupees">
+      <p className="mb-5 max-w-[720px] text-[14px] text-ash">
+        You paid the local shop in rupees. Signing this record links that bank transfer to the on-chain payout, so donors can see their money reached the real world.
+        Only hashes of the bank reference and payee go on-chain, and a bank reference can be used only once.
+      </p>
+      {due.length === 0 ? (
+        <Empty>No released payouts waiting for a rupee settlement.</Empty>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {due.map((p) => (
+            <SettleRow key={p.id} p={p} />
+          ))}
+        </div>
+      )}
+      {settled.length > 0 && (
+        <div className="mt-6 overflow-hidden rounded-[var(--radius-card)] border border-hairline bg-paper">
+          {settled.map((p) => (
+            <div key={p.id} className="grid grid-cols-[1fr_1fr_1.4fr_1fr] items-center gap-4 border-b border-hairline px-6 py-3 text-[14px] last:border-b-0">
+              <span>Payout #{p.id}</span>
+              <Rupees value={p.fiat.fiatAmount} />
+              <span className="text-ash">
+                bank ref <HashText value={p.fiat.bankRefHash} />
+              </span>
+              <StatusBadge status="Active" label="Paid in rupees" />
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+const toLocalInput = (unix) => {
+  const d = new Date(unix * 1000);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
+
+function SettleRow({ p }) {
+  const { c, chain, signer, tx, chainNow } = useApp("c", "chain", "signer", "tx", "chainNow");
+  const [amount, setAmount] = useState(String(p.amount));
+  const [bankRef, setBankRef] = useState("");
+  const [payee, setPayee] = useState("");
+  const [paidAt, setPaidAt] = useState(() => toLocalInput(chainNow()));
+  const [busy, setBusy] = useState(false);
+  const paidAtUnix = Math.floor(new Date(paidAt).getTime() / 1000);
+  // the contract accepts a payment made after the release and not in the future (minute precision here)
+  const timeOk = paidAtUnix + 60 >= (p.releasedAt ?? 0) && paidAtUnix <= chainNow() + 60;
+  const ok = Number(amount) > 0 && Number(amount) <= p.amount && bankRef.trim() && payee.trim() && timeOk;
+
+  async function settle() {
+    setBusy(true);
+    try {
+      // the picker has minute precision: keep the timestamp inside [release, now] as the contract requires
+      const at = Math.min(Math.max(paidAtUnix, p.releasedAt ?? 0), chainNow());
+      const { value, signature } = await chain.signFiatSettlement(signer, { payoutId: p.id, fiatAmount: Number(amount), bankRef, payee, paidAt: at });
+      await tx(`Settle payout #${p.id} in rupees`, () => c.vault.attestFiat(value, signature));
+    } catch {
+      // toasted
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[16px] font-medium">
+          Payout #{p.id} · <Rupees value={p.amount} />
+        </div>
+        <span className="text-[14px] text-ash">
+          settle within <Countdown until={p.fiatDeadline} done="overdue — anyone can flag it" />
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <Field label="Rupees paid (₹)" hint={`At most ₹${p.amount.toLocaleString("en-IN")}`}>
+          <Input type="number" min="1" max={p.amount} value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+        <Field label="Bank transfer reference (UTR)" hint="Only its hash goes on-chain.">
+          <Input value={bankRef} onChange={(e) => setBankRef(e.target.value)} placeholder="e.g. SBIN526318804211" />
+        </Field>
+        <Field label="Paid to (local vendor)" hint="Only its hash goes on-chain.">
+          <Input value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="Shop or account name" />
+        </Field>
+        <Field label="Paid on" hint={timeOk ? "After the release, not in the future." : "Must be after the release and not in the future."}>
+          <Input type="datetime-local" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+        </Field>
+      </div>
+      <Button className="mt-5" disabled={!ok || busy} onClick={settle}>
+        {busy ? "Signing…" : "Sign and record the rupee payment"}
+      </Button>
+    </Card>
   );
 }

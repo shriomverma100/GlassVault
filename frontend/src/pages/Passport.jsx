@@ -9,6 +9,7 @@ import { fadeUp, liquid, stagger } from "../lib/motion";
 import { Section, Card, Button, Input, Segmented, StatusBadge, Rupees, HashText, Countdown, Empty, Drawer, KV } from "../components/ui/kit";
 import { IconOrb } from "../components/ui/primitives";
 import ProofSpine from "../components/ProofSpine";
+import Journey from "../components/Journey";
 import { CategoryIcon, BridgeIcon, VaultIcon, GavelIcon, RefundIcon, CheckIcon, CrossIcon, InvoiceIcon, ScaleIcon } from "../components/icons";
 
 export default function Passport() {
@@ -229,6 +230,12 @@ function LotDetail({ lotId }) {
 
       <motion.div variants={fadeUp} className="border-t border-hairline">
         <ProofSpine steps={spineSteps} />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <Section eyebrow="Every hop, every chain, every rupee" title="Journey of this donation">
+          <Journey lot={lot} payouts={payouts} trail={passport?.trail ?? []} label={label} config={config} now={now} />
+        </Section>
       </motion.div>
 
       {(canReclaim || (isDonor && ngo.frozen)) && (

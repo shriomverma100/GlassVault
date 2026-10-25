@@ -39,6 +39,9 @@ export function makeChain(config) {
     impact: new ethers.Contract(A.ProofOfImpact.address, A.ProofOfImpact.abi, providerA),
     dinrB: new ethers.Contract(B.DINR.address, B.DINR.abi, signerB ?? providerB),
     gatewayB: new ethers.Contract(B.BridgeGateway.address, B.BridgeGateway.abi, signerB ?? providerB),
+    // ETH → dINR exchange the bridge swaps through (null on deployments that predate it)
+    dexB: B.MockDEX ? new ethers.Contract(B.MockDEX.address, B.MockDEX.abi, signerB ?? providerB) : null,
+    dex: A.MockDEX ? new ethers.Contract(A.MockDEX.address, A.MockDEX.abi, signer ?? providerA) : null,
   });
 
   const domain = { name: "GlassVault", version: "1", chainId: A.chainId, verifyingContract: A.GlassVault.address };
@@ -73,10 +76,45 @@ export function makeChain(config) {
       return null;
     }
   };
+  // ── fiat off-ramp settlement (EIP-712) ──
+  // The struct layout is read from the deployed vault ABI (attestFiat's first argument), so the signed
+  // fields always match what the contract hashes. Bank reference and payee are normalised, then hashed:
+  // only hashes go on-chain, and "utr123 " can't dodge the nullifier on "UTR123".
+  const fiatFn = (() => {
+    try {
+      return new ethers.Interface(A.GlassVault.abi).getFunction("attestFiat");
+    } catch {
+      return null;
+    }
+  })();
+  const fiatStruct = fiatFn?.inputs[0];
+  const fiatTypeName = fiatStruct?.internalType?.split(".").pop()?.replace(/^struct /, "") || "FiatSettlement";
+  const fiatTypes = {
+    [fiatTypeName]: fiatStruct?.components?.map((c) => ({ name: c.name, type: c.type })) ?? [
+      { name: "payoutId", type: "uint256" },
+      { name: "fiatAmount", type: "uint256" },
+      { name: "bankRefHash", type: "bytes32" },
+      { name: "payeeHash", type: "bytes32" },
+      { name: "paidAt", type: "uint64" },
+    ],
+  };
+  const bankRefHash = (ref) => ethers.id(String(ref).trim().toUpperCase().replace(/\s+/g, ""));
+  const payeeHash = (payee) => ethers.id(String(payee).trim().toLowerCase().replace(/\s+/g, " "));
+  /// { payoutId, fiatAmount (₹), bankRef, payee, paidAt (unix s), agent? } → struct exactly as attestFiat takes it
+  const typedFiat = (f) => {
+    const known = { payoutId: BigInt(f.payoutId), fiatAmount: toWei(f.fiatAmount), bankRefHash: bankRefHash(f.bankRef), payeeHash: payeeHash(f.payee), paidAt: BigInt(f.paidAt) };
+    return Object.fromEntries(fiatTypes[fiatTypeName].map(({ name }) => [name, name in known ? known[name] : f.agent]));
+  };
+  const signFiatSettlement = async (signer, f) => {
+    const value = typedFiat(f);
+    return { value, signature: await signer.signTypedData(domain, fiatTypes, value) };
+  };
+  const supportsFiat = !!fiatFn;
+
   const invoiceNullifier = (f) =>
     ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["address", "bytes32", "uint64", "uint256"], [f.vendor, ethers.id(f.invoiceNo), f.date, toWei(f.amount)]));
 
-  return { providerA, providerB, contracts, signInvoice, recoverInvoiceSigner, typedInvoice, invoiceNullifier, A, B };
+  return { providerA, providerB, contracts, signInvoice, recoverInvoiceSigner, typedInvoice, invoiceNullifier, signFiatSettlement, typedFiat, supportsFiat, A, B };
 }
 
 /// Turns a revert into a readable reason using the contract's custom errors.

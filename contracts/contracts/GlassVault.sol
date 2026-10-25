@@ -27,7 +27,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
     enum PayoutStatus { None, Pending, Released, Completed, Challenged, Cancelled }
     /// @dev OverBudget and AmountMismatch are emitted as `Discrepancy` (recorded, not counted toward a
     ///      freeze — stale balances cause them honestly). VendorDoubleSign slashes the vendor, not the NGO.
-    enum FraudReason { DuplicateInvoice, ForgedSignature, OutOfCategory, OverBudget, AmountMismatch, UnregisteredVendor, ChallengeUpheld, VendorDoubleSign }
+    enum FraudReason { DuplicateInvoice, ForgedSignature, OutOfCategory, OverBudget, AmountMismatch, UnregisteredVendor, ChallengeUpheld, VendorDoubleSign, DuplicateFiatProof, UnexplainedTransfer }
 
     struct NGO {
         address admin;
@@ -46,6 +46,7 @@ contract GlassVault is EIP712, ReentrancyGuard {
         bytes32 nameHash; // e.g. keccak(GSTIN) — no plaintext on-chain
         uint256 stake;
         bool slashed;     // a slashed vendor can never register again (under any category)
+        bool offRamp;     // fiat payment agent: receives dINR, pays local vendors in rupees, must prove it
     }
 
     /// @notice One donation = one tagged lot of money.
@@ -85,6 +86,16 @@ contract GlassVault is EIP712, ReentrancyGuard {
         uint32 deliveries;
     }
 
+    /// @notice What an off-ramp agent signs after paying a local (fiat-only) vendor in rupees.
+    ///         Links the on-chain payout to one bank transfer; a bank reference can back only one payout.
+    struct FiatSettlement {
+        uint256 payoutId;
+        uint256 fiatAmount;  // rupees paid out, 18 decimals like dINR
+        bytes32 bankRefHash; // keccak of the bank transfer reference (UTR) — no account data on-chain
+        bytes32 payeeHash;   // keccak of the local payee (shop name / GSTIN)
+        uint64 paidAt;
+    }
+
     struct LotShare {
         uint256 lotId;
         uint256 amount;
@@ -103,6 +114,10 @@ contract GlassVault is EIP712, ReentrancyGuard {
 
     bytes32 public constant INVOICE_TYPEHASH = keccak256(
         "Invoice(address vendor,uint256 ngoId,bytes32 invoiceNo,uint256 amount,uint64 date,uint8 category,bytes32 fileHash)"
+    );
+
+    bytes32 public constant FIAT_TYPEHASH = keccak256(
+        "FiatSettlement(uint256 payoutId,uint256 fiatAmount,bytes32 bankRefHash,bytes32 payeeHash,uint64 paidAt)"
     );
 
     uint8 public constant FRAUD_THRESHOLD = 2;
@@ -134,6 +149,11 @@ contract GlassVault is EIP712, ReentrancyGuard {
     /// @notice A beneficiary batch proves delivery for exactly one payout, so the same cards can't
     ///         "prove" every invoice.
     mapping(bytes32 => bool) public rootUsed;
+    /// @notice Off-ramp evidence: payoutId → bank reference that settled it (0 = not settled).
+    mapping(uint256 => bytes32) public fiatProof;
+    /// @notice Global bank-reference nullifier set — one bank transfer can't settle two payouts.
+    mapping(bytes32 => bool) public bankRefUsed;
+    mapping(uint256 => uint64) public releasedAt;
 
     // ─────────────────────────── events ──────────────────────────
 
@@ -150,6 +170,9 @@ contract GlassVault is EIP712, ReentrancyGuard {
     event NGOFrozen(uint256 indexed ngoId, uint32 flagCount);
     event Discrepancy(uint256 indexed ngoId, FraudReason reason, bytes32 nullifier, bytes32 fileHash);
     event VendorSlashed(address indexed vendor, uint256 amount, bytes32 nullifier);
+    event OffRampRegistered(address indexed agent);
+    event FiatSettled(uint256 indexed payoutId, address indexed agent, uint256 fiatAmount, bytes32 bankRefHash, bytes32 payeeHash, uint64 paidAt);
+    event UnexplainedTransfer(uint256 indexed payoutId, address indexed agent, address indexed reporter, uint256 reward);
     event Challenged(uint256 indexed payoutId, address indexed challenger, bytes32 evidenceHash, string evidenceURI, uint64 voteEnd);
     event Voted(uint256 indexed payoutId, address indexed donor, bool uphold, uint256 weight);
     event ChallengeResolved(uint256 indexed payoutId, bool upheld, uint256 reward);
@@ -177,6 +200,10 @@ contract GlassVault is EIP712, ReentrancyGuard {
     error CategoryLocked();
     error VendorBanned();
     error RootAlreadyUsed();
+    error RoleLocked();
+    error NotOffRamp();
+    error BadSettlement();
+    error SettlementOpen();
 
     constructor(IERC20 token_, uint64 challengeWindow_, address bridgeGateway_) EIP712("GlassVault", "1") {
         token = token_;
@@ -198,9 +225,22 @@ contract GlassVault is EIP712, ReentrancyGuard {
     /// @notice Vendors stake to be allowed to sign invoices. A fake vendor costs real money.
     ///         Category is fixed once registered, so a vendor can't re-categorise to frame an NGO.
     function registerVendor(Category category, bytes32 nameHash) external nonReentrant {
+        _registerVendor(category, nameHash, false);
+    }
+
+    /// @notice A fiat payment agent (off-ramp) stakes like a vendor. Payouts to it must later be
+    ///         settled with a signed FiatSettlement, or anyone can flag them as unexplained.
+    function registerOffRamp(Category category, bytes32 nameHash) external nonReentrant {
+        _registerVendor(category, nameHash, true);
+        emit OffRampRegistered(msg.sender);
+    }
+
+    function _registerVendor(Category category, bytes32 nameHash, bool offRamp) internal {
         Vendor storage v = vendors[msg.sender];
         if (v.slashed) revert VendorBanned();
         if (v.registered && v.category != category) revert CategoryLocked();
+        if (v.registered && v.offRamp != offRamp) revert RoleLocked();
+        v.offRamp = offRamp;
         bool topUp = v.stake < VENDOR_STAKE;
         uint256 due = topUp ? VENDOR_STAKE - v.stake : 0;
         v.registered = true;
@@ -344,10 +384,11 @@ contract GlassVault is EIP712, ReentrancyGuard {
         uint256 tranche = (p.amount * INVOICE_RELEASE_BPS) / 10_000;
         p.status = PayoutStatus.Released;
         p.paid = tranche;
+        releasedAt[payoutId] = uint64(block.timestamp);
         emit PayoutReleased(payoutId, tranche);
         token.safeTransfer(p.vendor, tranche);
 
-        if (p.deliveries >= p.deliveriesRequired) _complete(payoutId, p);
+        if (_impactProven(payoutId, p)) _complete(payoutId, p);
     }
 
     // ───────────── ④ cryptographic impact verification ─────────────
@@ -371,7 +412,70 @@ contract GlassVault is EIP712, ReentrancyGuard {
         p.deliveries += 1;
         emit DeliveryConfirmed(payoutId, deliveryNullifier, p.deliveries, p.deliveriesRequired);
 
-        if (p.status == PayoutStatus.Released && p.deliveries >= p.deliveriesRequired) _complete(payoutId, p);
+        if (p.status == PayoutStatus.Released && _impactProven(payoutId, p)) _complete(payoutId, p);
+    }
+
+    // ───────────────────── off-chain fiat off-ramp ─────────────────────
+
+    function fiatDigest(FiatSettlement calldata f) public view returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(FIAT_TYPEHASH, f.payoutId, f.fiatAmount, f.bankRefHash, f.payeeHash, f.paidAt)));
+    }
+
+    /// @notice Deadline for an off-ramp payout's fiat settlement (0 until released).
+    function fiatDeadline(uint256 payoutId) public view returns (uint64) {
+        uint64 t = releasedAt[payoutId];
+        return t == 0 ? 0 : t + 2 * challengeWindow;
+    }
+
+    /// @notice Records the agent-signed proof that a released payout was paid out in rupees. Anyone can
+    ///         submit it (the agent's signature is the proof). A bank reference already used for
+    ///         another payout is double-counted evidence: recorded as a fraud flag on the NGO.
+    /// @return settled false if the settlement was flagged as a duplicate.
+    function attestFiat(FiatSettlement calldata f, bytes calldata agentSig) external nonReentrant returns (bool settled) {
+        Payout storage p = _payout(f.payoutId);
+        if (!vendors[p.vendor].offRamp) revert NotOffRamp();
+        if (p.status != PayoutStatus.Released || fiatProof[f.payoutId] != 0) revert BadPayout();
+        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(fiatDigest(f), agentSig);
+        if (err != ECDSA.RecoverError.NoError || signer != p.vendor) revert BadSettlement();
+        // paid in rupees after the money left escrow, never in the future, never more than the invoice
+        if (f.bankRefHash == bytes32(0) || f.fiatAmount == 0 || f.fiatAmount > p.amount) revert BadSettlement();
+        if (f.paidAt < releasedAt[f.payoutId] || f.paidAt > block.timestamp) revert BadSettlement();
+
+        if (bankRefUsed[f.bankRefHash]) {
+            _flag(p.ngoId, FraudReason.DuplicateFiatProof, f.bankRefHash, p.fileHash);
+            return false;
+        }
+        bankRefUsed[f.bankRefHash] = true;
+        fiatProof[f.payoutId] = f.bankRefHash;
+        emit FiatSettled(f.payoutId, p.vendor, f.fiatAmount, f.bankRefHash, f.payeeHash, f.paidAt);
+        if (_impactProven(f.payoutId, p)) _complete(f.payoutId, p);
+        return true;
+    }
+
+    /// @notice An off-ramp payout released but never proven paid in rupees is an unexplained transfer.
+    ///         After the deadline anyone can flag it: the agent's stake goes to the reporter, the agent is
+    ///         banned, the NGO gets a fraud flag, and the unpaid 30% returns to the donors' lots.
+    function flagUnsettled(uint256 payoutId) external nonReentrant {
+        Payout storage p = _payout(payoutId);
+        if (!vendors[p.vendor].offRamp) revert NotOffRamp();
+        if (p.status != PayoutStatus.Released || fiatProof[payoutId] != 0) revert BadPayout();
+        if (block.timestamp <= fiatDeadline(payoutId)) revert SettlementOpen();
+
+        Vendor storage v = vendors[p.vendor];
+        uint256 reward = v.stake;
+        v.stake = 0;
+        v.registered = false;
+        v.slashed = true;
+        _unwind(payoutId, p);
+        _flag(p.ngoId, FraudReason.UnexplainedTransfer, p.nullifier, p.fileHash);
+        emit UnexplainedTransfer(payoutId, p.vendor, msg.sender, reward);
+        if (reward > 0) token.safeTransfer(msg.sender, reward);
+    }
+
+    /// @dev Root ④ is met when enough beneficiaries confirmed — and, for off-ramp payouts, the rupee
+    ///      payment to the local vendor is proven too.
+    function _impactProven(uint256 payoutId, Payout storage p) internal view returns (bool) {
+        return p.deliveries >= p.deliveriesRequired && (!vendors[p.vendor].offRamp || fiatProof[payoutId] != 0);
     }
 
     // ───────────────── challenge court (no auditor) ─────────────────

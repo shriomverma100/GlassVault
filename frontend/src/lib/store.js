@@ -273,4 +273,4 @@ export function useRerenderAt(times) {
 }
 
 /// Every timestamp at which some payout's available actions change.
-export const payoutBoundaries = (payouts) => payouts.flatMap((p) => [p.releaseAt, p.challenge?.voteEnd]);
+export const payoutBoundaries = (payouts) => payouts.flatMap((p) => [p.releaseAt, p.challenge?.voteEnd, p.fiatDeadline]);

@@ -10,6 +10,8 @@ export const REASONS = {
   UnregisteredVendor: { title: "Unregistered vendor", text: "No staked vendor behind this invoice" },
   ChallengeUpheld: { title: "Challenge upheld", text: "Donors upheld a watcher challenge" },
   VendorDoubleSign: { title: "Vendor double-signed", text: "Same invoice signed for two NGOs — vendor stake slashed" },
+  DuplicateFiatProof: { title: "Same bank transfer used twice", text: "One rupee payment claimed as proof for two payouts" },
+  UnexplainedTransfer: { title: "Unexplained transfer", text: "Money released to a payment agent but never proven paid in rupees" },
 };
 
 export const ipfsHref = (uri) => (uri?.startsWith("ipfs://") ? `/ipfs/${uri.slice(7)}` : uri);

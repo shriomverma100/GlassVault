@@ -6,7 +6,7 @@ import { useApp } from "../../lib/store";
 import { liquid } from "../../lib/motion";
 import { CheckIcon, CrossIcon } from "../icons";
 
-export const FRAUD_REASONS = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign"];
+export const FRAUD_REASONS = ["DuplicateInvoice", "ForgedSignature", "OutOfCategory", "OverBudget", "AmountMismatch", "UnregisteredVendor", "ChallengeUpheld", "VendorDoubleSign", "DuplicateFiatProof", "UnexplainedTransfer"];
 export const humanize = (s = "") => s.replace(/([A-Z])/g, " $1").trim();
 export const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 

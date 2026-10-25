@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "../lib/store";
@@ -36,12 +37,18 @@ function DonateForm() {
   const [balances, setBalances] = useState({ A: null, B: null });
   const [busy, setBusy] = useState(false);
   const [relaying, setRelaying] = useState(null); // { since: lotCount, nonce: bridge nonce }
+  // multi-hop path: pay ETH on chain B → swapped to dINR at the DEX → bridged → lot on chain A
+  const [asset, setAsset] = useState("dINR");
+  const [ethAmount, setEthAmount] = useState("0.5");
+  const [ethBalance, setEthBalance] = useState(null);
+  const [quote, setQuote] = useState(null); // ₹ the DEX gives for ethAmount
 
   const refresh = useCallback(async () => {
     if (!c || !address) return;
     const [a, b] = await Promise.all([c.dinr.balanceOf(address).catch(() => 0n), c.dinrB.balanceOf(address).catch(() => 0n)]);
     setBalances({ A: fromWei(a), B: fromWei(b) });
-  }, [c, address]);
+    chain?.providerB.getBalance(address).then((w) => setEthBalance(Number(ethers.formatEther(w)))).catch(() => {});
+  }, [c, chain, address]);
   useEffect(() => {
     refresh();
   }, [refresh, state.updatedAt]);
@@ -64,11 +71,32 @@ function DonateForm() {
     toast({ title: "Bridge delivery failed", body: `${relayer.error}. The money stays locked in the bridge on chain B and is retried when the relayer restarts.`, tone: "error", ms: 10000 });
   }, [relayer, relaying, toast]);
 
+  const payEth = source === "B" && asset === "ETH" && !!c?.dexB;
+  const eth = Number(ethAmount);
+
+  // live DEX quote for the ETH path (what the lot will hold after the swap)
+  useEffect(() => {
+    if (!payEth || !(eth > 0)) return setQuote(null);
+    let live = true;
+    const id = setTimeout(() => {
+      c.dexB
+        .quote(ethers.parseEther(String(eth)))
+        .then((out) => live && setQuote(fromWei(out)))
+        .catch(() => live && setQuote(null));
+    }, 150);
+    return () => {
+      live = false;
+      clearTimeout(id);
+    };
+  }, [payEth, eth, c]);
+
   const ngo = state.ngos[ngoId];
-  const amt = Number(amount);
+  const amt = payEth ? (quote ?? 0) : Number(amount);
   const nDays = Math.max(1, Math.floor(Number(days) || 0));
   const balance = balances[source];
-  const valid = ngo && !ngo.frozen && amt > 0 && balance !== null && amt <= balance;
+  const valid = payEth
+    ? ngo && !ngo.frozen && eth > 0 && quote > 0 && ethBalance !== null && eth <= ethBalance
+    : ngo && !ngo.frozen && amt > 0 && balance !== null && amt <= balance;
 
   async function submit() {
     setBusy(true);
@@ -82,6 +110,16 @@ function DonateForm() {
         const rc = await tx(`Donate ₹${amt.toLocaleString("en-IN")} to ${ngo.name}`, () => c.vault.donate(ngoId, cat, wei, deadline));
         const ev = rc.logs.map((l) => c.vault.interface.parseLog(l)).find((p) => p?.name === "Donated");
         if (ev) navigate(`/passport/${Number(ev.args.lotId)}`);
+      } else if (payEth) {
+        // one transaction on chain B: swap at the DEX (≤1% slippage) and lock the dINR in the bridge
+        const value = ethers.parseEther(String(eth));
+        const minOut = ((await c.dexB.quote(value)) * 99n) / 100n;
+        const since = state.lots.length;
+        const rc = await tx(`Swap ${eth} ETH to rupees and bridge it`, () =>
+          c.gatewayB.sendDonationWithSwap(c.dexB.target, ngoId, cat, deadline, config.chainA.chainId, minOut, { value }),
+        );
+        const sent = rc.logs.map((l) => c.gatewayB.interface.parseLog(l)).find((p) => p?.name === "DonationSent");
+        setRelaying({ since, nonce: sent ? String(sent.args.nonce) : null });
       } else {
         const gw = chain.B.BridgeGateway.address;
         if ((await c.dinrB.allowance(address, gw)) < wei) await tx("Approve dINR on chain B", () => c.dinrB.approve(gw, wei));
@@ -138,14 +176,23 @@ function DonateForm() {
           <div className="flex flex-col gap-6">
             <Segmented id="cat" value={category} onChange={setCategory} options={CATEGORIES.map((cname) => ({ value: cname, label: cname, icon: <CategoryIcon category={cname} size={16} /> }))} />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label="Amount (₹)" hint={balance !== null ? `Balance on chain ${source}: ₹${balance.toLocaleString("en-IN")}` : "Loading balance…"}>
-                <Input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              </Field>
+              {payEth ? (
+                <Field
+                  label="Amount (ETH)"
+                  hint={`${quote ? `Swaps to about ₹${Math.floor(quote).toLocaleString("en-IN")}` : "Getting a quote…"} · balance ${ethBalance === null ? "…" : ethBalance.toFixed(3)} ETH on chain B`}
+                >
+                  <Input type="number" min="0" step="0.01" value={ethAmount} onChange={(e) => setEthAmount(e.target.value)} />
+                </Field>
+              ) : (
+                <Field label="Amount (₹)" hint={balance !== null ? `Balance on chain ${source}: ₹${balance.toLocaleString("en-IN")}` : "Loading balance…"}>
+                  <Input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                </Field>
+              )}
               <Field label="Proof deadline (days)" hint="If no proof by then, you can reclaim what's unspent.">
                 <Input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)} />
               </Field>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className={`flex flex-wrap gap-2 ${payEth ? "hidden" : ""}`}>
               {[5000, 25000, 50000, 100000].map((v) => (
                 <button key={v} type="button" onClick={() => setAmount(String(v))} className="h-9 rounded-full border border-hairline bg-white px-4 text-[13px] text-ash hover:border-obsidian">
                   ₹{v.toLocaleString("en-IN")}
@@ -169,7 +216,26 @@ function DonateForm() {
             <BalanceTile label={`Chain A · ${config.chainA.chainId}`} value={balances.A} active={source === "A"} />
             <BalanceTile label={`Chain B · ${config.chainB.chainId}`} value={balances.B} active={source === "B"} />
           </div>
-          {source === "B" && <p className="mt-3 text-[13px] text-ash">Your dINR is locked on chain B. The relayer delivers it into a vault lot on chain A that keeps you as the donor and records the source chain.</p>}
+          {source === "B" && c?.dexB && (
+            <div className="mt-4">
+              <Segmented
+                id="asset"
+                value={asset}
+                onChange={setAsset}
+                options={[
+                  { value: "dINR", label: "Pay in rupees (dINR)" },
+                  { value: "ETH", label: "Pay in ETH · swapped" },
+                ]}
+              />
+            </div>
+          )}
+          {source === "B" && (
+            <p className="mt-3 text-[14px] text-ash">
+              {payEth
+                ? "Your ETH is swapped to rupees at the exchange and locked in the bridge in one transaction. The relayer turns it into a lot on chain A that still remembers you, the ETH you paid and the swap — every hop stays traceable."
+                : "Your dINR is locked on chain B. The relayer delivers it into a vault lot on chain A that keeps you as the donor and records the source chain."}
+            </p>
+          )}
         </Section>
       </div>
 
@@ -190,9 +256,11 @@ function DonateForm() {
             <Rule icon={<RefundIcon size={16} />}>No proof in {nDays} day{nDays === 1 ? "" : "s"}, or the NGO is frozen → you reclaim what's unspent.</Rule>
           </ul>
           <Button variant="signal" className="mt-6 w-full" disabled={!valid || busy || !!relaying} onClick={submit}>
-            {busy ? "Confirming…" : source === "A" ? "Donate" : "Send over bridge"}
+            {busy ? "Confirming…" : source === "A" ? "Donate" : payEth ? "Swap, bridge and donate" : "Send over bridge"}
           </Button>
-          {amt > (balance ?? Infinity) && <div className="mt-2 text-[13px] text-graphite">Not enough dINR on chain {source}.</div>}
+          {!payEth && amt > (balance ?? Infinity) && <div className="mt-2 text-[13px] text-graphite">Not enough dINR on chain {source}.</div>}
+          {payEth && eth > (ethBalance ?? Infinity) && <div className="mt-2 text-[13px] text-graphite">Not enough ETH on chain B.</div>}
+          {payEth && quote > 0 && <div className="mt-2 text-[13px] text-ash">You pay {eth} ETH · the lot holds the swapped rupees (min. 99% of the quote).</div>}
           <AnimatePresence>
             {relaying && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">

@@ -5,6 +5,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+interface IDex {
+    function swapExactETHForDINR(uint256 minOut, address to) external payable returns (uint256);
+}
+
 interface IGlassVault {
     function donateFor(address donor, uint256 ngoId, uint8 category, uint256 amount, uint64 deadline, uint64 sourceChain)
         external
@@ -27,10 +31,13 @@ contract BridgeGateway is ReentrancyGuard {
 
     event DonationSent(uint256 indexed nonce, address indexed donor, uint256 ngoId, uint8 category, uint256 amount, uint64 deadline, uint64 destChain);
     event DonationDelivered(uint64 indexed sourceChain, uint256 indexed nonce, uint256 lotId);
+    /// @notice The swap hop of a multi-hop donation: links the original asset to the bridged tag.
+    event DonationSwapped(uint256 indexed nonce, address indexed donor, address dex, uint256 ethIn, uint256 dinrOut);
 
     error OnlyRelayer();
     error AlreadyDelivered();
     error VaultAlreadySet();
+    error Slippage();
 
     constructor(IERC20 token_, address relayer_) {
         token = token_;
@@ -48,6 +55,23 @@ contract BridgeGateway is ReentrancyGuard {
         uint256 n = nonce++;
         emit DonationSent(n, msg.sender, ngoId, category, amount, deadline, destChain);
         token.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    /// @notice Donate in ETH: swap to dINR at `dex`, then lock and tag it like `sendDonation`.
+    /// @dev The amount locked is what this gateway actually received (balance delta), so a dishonest
+    ///      dex can't inflate the tagged amount.
+    function sendDonationWithSwap(address dex, uint256 ngoId, uint8 category, uint64 deadline, uint64 destChain, uint256 minOut)
+        external
+        payable
+        nonReentrant
+    {
+        uint256 before = token.balanceOf(address(this));
+        IDex(dex).swapExactETHForDINR{value: msg.value}(minOut, address(this));
+        uint256 amount = token.balanceOf(address(this)) - before;
+        if (amount < minOut || amount == 0) revert Slippage();
+        uint256 n = nonce++;
+        emit DonationSwapped(n, msg.sender, dex, msg.value, amount);
+        emit DonationSent(n, msg.sender, ngoId, category, amount, deadline, destChain);
     }
 
     function deliverDonation(

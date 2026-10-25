@@ -31,7 +31,7 @@ export const HOME = { Donor: "/passport", NGO: "/ngo", Vendor: "/vendor", Field:
 export const KIND_INFO = {
   Donor: { title: "Donor", text: "Give to a cause, follow every rupee, vote on disputes, get your money back if proof never comes." },
   NGO: { title: "NGO", text: "Receive purpose-locked donations, pay vendors against signed invoices, prove delivery to beneficiaries." },
-  Vendor: { title: "Vendor / supplier", text: "Sign invoices for goods you delivered and get paid straight from escrow." },
+  Vendor: { title: "Vendor / payment agent", text: "Sign invoices for goods you delivered and get paid from escrow — or, as a fiat agent, pay local shops in rupees and prove it." },
   Field: { title: "Field partner", text: "Scan beneficiaries' QR cards on delivery — their confirmation releases the final payment." },
   Watcher: { title: "Watcher", text: "Audit any payout in the open, challenge suspicious ones and earn the fraudster's bond." },
 };

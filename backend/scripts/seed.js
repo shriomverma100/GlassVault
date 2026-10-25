@@ -21,6 +21,7 @@ const SEED_ACCOUNTS = [
   ["quickfix", "vendorShell", "Vendor", "QuickFix Traders"],
   ["field", "fieldWorker", "Field", "Field worker"],
   ["watcher", "watcher", "Watcher", "Watcher"],
+  ["paylink", "offrampAgent", "Vendor", "PayLink Fiat Agents"],
 ];
 
 /// Idempotent: existing usernames are skipped. Keystores use the same scrypt cost as the browser.
@@ -53,7 +54,7 @@ if (nNgos > 0n) {
 }
 
 console.log("1. funding wallets (dINR on both chains)");
-const funded = ["ngoAsha", "ngoShadow", "vendorWater", "vendorMedical", "vendorEducation", "donorPriya", "donorRahul", "donorCSR", "watcher", "fieldWorker"];
+const funded = ["ngoAsha", "ngoShadow", "vendorWater", "vendorMedical", "vendorEducation", "donorPriya", "donorRahul", "donorCSR", "watcher", "fieldWorker", "offrampAgent"];
 for (const role of funded) {
   await wait(tokenA("relayer").mint(address(role), inr(2_000_000)));
   await wait(tokenA(role).approve(depA.GlassVault.address, ethers.MaxUint256));
@@ -69,6 +70,8 @@ await wait(vaultAs("ngoShadow").registerNGO("Shadow Trust"));
 await wait(vaultAs("vendorWater").registerVendor(CAT.Water, ethers.id("GSTIN 27AABCB1234F1Z5 · BlueWell Pumps")));
 await wait(vaultAs("vendorMedical").registerVendor(CAT.Medical, ethers.id("GSTIN 07AACCM5678K1Z2 · MediCare Supplies")));
 await wait(vaultAs("vendorEducation").registerVendor(CAT.Education, ethers.id("GSTIN 29AADCV9012L1Z8 · Vidya Books")));
+await wait(vaultAs("offrampAgent").registerOffRamp(CAT.Water, ethers.id("RBI PA licence · PayLink Fiat Agents")));
+log("PayLink Fiat Agents registered as a fiat off-ramp (Water)");
 
 console.log("3. donations (purpose-tagged lots)");
 const donations = [
@@ -94,6 +97,22 @@ for (let i = 0; i < 30; i++) {
 }
 log("bridged lot delivered on chain A");
 
+console.log("4b. multi-hop donation: 0.25 ETH on chain B → swapped to dINR → bridged → tagged lot on chain A");
+const dexB = new ethers.Contract(ctx.depB.MockDEX.address, ctx.depB.MockDEX.abi, ctx.providerB);
+const ethIn = ethers.parseEther("0.25");
+const quoted = await dexB.quote(ethIn);
+const [, lotsBeforeSwap] = await vaultAs("relayer").counts();
+await wait(gatewayB("donorRahul").sendDonationWithSwap(ctx.depB.MockDEX.address, 0, CAT.Water, await inDays(30), depA.chainId, quoted, { value: ethIn }));
+log(`hop 1 · Rahul swapped 0.25 ETH → ₹${Number(ethers.formatUnits(quoted, 18)).toLocaleString("en-IN")} dINR on chain B and locked it in the bridge`);
+let swappedLot = null;
+for (let i = 0; i < 30 && swappedLot === null; i++) {
+  const [, lots] = await vaultAs("relayer").counts();
+  if (lots > lotsBeforeSwap) swappedLot = Number(lots) - 1;
+  else await sleep(500);
+}
+if (swappedLot === null) throw new Error("swapped donation was not relayed");
+log(`hop 2 · relayer delivered it to chain A as lot #${swappedLot} (donor + purpose tag kept)`);
+
 console.log("5. full 4-root payout: invoice → window → release 70% → deliveries → final 30%");
 const date = Math.floor(Date.now() / 1000) - 3 * 86400;
 const items = [{ qty: 4, name: "Hand pump (India Mark II)", price: 7_500 }, { qty: 10, name: "GI pipe 3m", price: 1_000 }];
@@ -108,9 +127,23 @@ await wait(vaultAs("ngoAsha").requestPayout(typed, signature, [{ lotId: 0, amoun
 await api(`/api/invoices/${invoice.id}/status`, { status: "submitted" });
 log("payout #0 requested · challenge window open");
 
+// off-ramp payout from the swapped lot: PayLink pays a local hardware shop in rupees, off-chain
+const plItems = [{ qty: 8, name: "Handpump spares kit (cash to Gram Jal Hardware)", price: 2_500 }];
+const plPng = await renderReceipt({ seed: "seed-pl-5521", vendorName: "PayLink Fiat Agents", invoiceNo: "PL-5521", date, items: plItems, total: 20_000 });
+const plFile = await uploadFile(plPng, "PL-5521.png");
+const plFields = { vendor: address("offrampAgent"), ngoId: 0, invoiceNo: "PL-5521", amount: 20_000, date, category: CAT.Water, fileHash: plFile.fileHash };
+const pl = await signInvoice(ctx, "offrampAgent", plFields);
+const plInvoice = await api("/api/invoices", { ...plFields, signature: pl.signature, lineItems: plItems });
+const plBatch = await api("/api/beneficiaries", { count: 2, label: "Wadgaon handpump repairs", ngoId: 0 });
+await wait(vaultAs("ngoAsha").requestPayout(pl.typed, pl.signature, [{ lotId: swappedLot, amount: inr(20_000) }], plBatch.root, 2));
+await api(`/api/invoices/${plInvoice.id}/status`, { status: "submitted" });
+log(`hop 3 · payout #1 requested from lot #${swappedLot} to off-ramp PayLink (PL-5521, ₹20,000)`);
+
 await advance(providerA, Number(await vaultAs("relayer").challengeWindow()) + 1);
 await wait(vaultAs("fieldWorker").release(0));
 log("window closed · 70% released to BlueWell Pumps");
+await wait(vaultAs("fieldWorker").release(1));
+log("hop 4 · payout #1: 70% (₹14,000) released to PayLink on-chain");
 
 const { StandardMerkleTree } = await import("@openzeppelin/merkle-tree");
 const tree = StandardMerkleTree.load((await api(`/api/beneficiaries/${batch.root}`)).dump);
@@ -119,6 +152,31 @@ for (const card of batch.cards) {
   await wait(vaultAs("fieldWorker").confirmDelivery(0, card.secret, proof));
 }
 log("3/3 beneficiaries confirmed by QR · final 30% released · Proof-of-Impact minted");
+
+// off-chain fiat leg: PayLink pays the shop by bank transfer, then signs what it paid (EIP-712)
+const settlement = {
+  payoutId: 1,
+  fiatAmount: inr(20_000),
+  bankRefHash: ethers.id("UTR-SBIN-2026-0042"),
+  payeeHash: ethers.id("Gram Jal Hardware, Wadgaon"),
+  paidAt: (await providerA.getBlock("latest")).timestamp,
+};
+const fiatDomain = { name: "GlassVault", version: "1", chainId: depA.chainId, verifyingContract: depA.GlassVault.address };
+const fiatTypes = {
+  FiatSettlement: [
+    { name: "payoutId", type: "uint256" },
+    { name: "fiatAmount", type: "uint256" },
+    { name: "bankRefHash", type: "bytes32" },
+    { name: "payeeHash", type: "bytes32" },
+    { name: "paidAt", type: "uint64" },
+  ],
+};
+const fiatSig = await new ethers.Wallet(roleKey("offrampAgent")).signTypedData(fiatDomain, fiatTypes, settlement);
+await wait(vaultAs("offrampAgent").attestFiat(settlement, fiatSig));
+log("hop 5 · PayLink attested ₹20,000 paid by bank (UTR hash) to Gram Jal Hardware (payee hash)");
+const plTree = StandardMerkleTree.load((await api(`/api/beneficiaries/${plBatch.root}`)).dump);
+for (const card of plBatch.cards) await wait(vaultAs("fieldWorker").confirmDelivery(1, card.secret, plTree.getProof([card.commitment])));
+log("hop 6 · 2/2 beneficiaries confirmed · fiat + delivery proven → final 30% paid · impact verified");
 
 console.log("6. a second payout left OPEN for the live demo (Medical, window running)");
 const items2 = [{ qty: 200, name: "Insulin vial 10ml", price: 250 }];

@@ -36,6 +36,7 @@ export const ROLES = {
   watcher: 9,
   fieldWorker: 10,
   vendorShell: 11, // red-team: colluding shell vendor used by the attack script
+  offrampAgent: 12, // fiat off-ramp agent: pays local vendors in rupees and attests it on-chain
 };
 export const roleKey = (role) => devKey(ROLES[role]);
 

@@ -67,11 +67,18 @@ const TASKS = {
       ...awaiting.map((p) => ({ text: `Payout #${p.id}: ${p.deliveriesRequired - p.deliveries} deliveries to confirm`, to: "/field" })),
     ];
   },
-  Vendor(state, me) {
+  Vendor(state, me, now) {
     const v = state.vendors.find((x) => sameAddr(x.address, me));
     if (!v?.registered) return [{ text: v ? "Your stake was slashed — this wallet is banned" : "Register and stake ₹5,000 to sign invoices", to: "/vendor", urgent: true }];
-    const pending = state.payouts.filter((p) => sameAddr(p.vendor, me) && p.status !== "Completed" && p.status !== "Cancelled");
-    return [{ text: "Issue an invoice", to: "/vendor" }, ...pending.map((p) => ({ text: `Payout #${p.id}: ${p.status.toLowerCase()}`, to: "/vendor" }))];
+    const mine = state.payouts.filter((p) => sameAddr(p.vendor, me));
+    // fiat agents must prove each released payout was paid out in rupees, or lose their stake
+    const toSettle = v.offRamp ? mine.filter((p) => p.status === "Released" && !p.fiat) : [];
+    const pending = mine.filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && !toSettle.includes(p));
+    return [
+      ...toSettle.map((p) => ({ text: `Settle payout #${p.id} in rupees${now > p.fiatDeadline ? " — overdue" : ""}`, to: "/vendor", urgent: true })),
+      { text: "Issue an invoice", to: "/vendor" },
+      ...pending.map((p) => ({ text: `Payout #${p.id}: ${p.status.toLowerCase()}`, to: "/vendor" })),
+    ];
   },
   Field(state) {
     return state.payouts
@@ -80,6 +87,10 @@ const TASKS = {
   },
   Watcher(state, me, now) {
     const open = state.payouts.filter((p) => p.status === "Pending" && now < p.releaseAt && !state.ngos[p.ngoId]?.frozen);
-    return open.map((p) => ({ text: `Review payout #${p.id} before its window closes`, to: "/watchtower" }));
+    const unsettled = state.payouts.filter((p) => p.offRamp && p.status === "Released" && !p.fiat && p.fiatDeadline && now > p.fiatDeadline);
+    return [
+      ...unsettled.map((p) => ({ text: `Payout #${p.id}: never paid out in rupees — flag it`, to: "/watchtower", urgent: true })),
+      ...open.map((p) => ({ text: `Review payout #${p.id} before its window closes`, to: "/watchtower" })),
+    ];
   },
 };

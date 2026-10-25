@@ -54,7 +54,7 @@ export function lotSpine(lot, ngo, payouts) {
 }
 
 const CAT = ["Water", "Medical", "Education"];
-const REASON = ["duplicate invoice", "forged signature", "out-of-category spend", "over-budget charge", "amount mismatch", "unregistered vendor", "challenge upheld", "vendor signed the same invoice for two NGOs"];
+const REASON = ["duplicate invoice", "forged signature", "out-of-category spend", "over-budget charge", "amount mismatch", "unregistered vendor", "challenge upheld", "vendor signed the same invoice for two NGOs", "same bank transfer used to prove two payouts", "money released but never paid out in rupees"];
 
 /// One human sentence per chain event, for the live ticker and timelines.
 export function eventSentence(ev, label, state) {
@@ -101,6 +101,14 @@ export function eventSentence(ev, label, state) {
       return `${label(a.donor)} sent ${rs(a.amount)} from chain B to the bridge`;
     case "DonationDelivered":
       return `Bridge delivered nonce ${a.nonce} as lot #${a.lotId}`;
+    case "DonationSwapped":
+      return `${label(a.donor)} swapped ${Number(BigInt(a.ethIn ?? 0)) / 1e18} ETH → ${rs(a.dinrOut)} on chain B for a donation`;
+    case "OffRampRegistered":
+      return `${label(a.agent)} registered as a fiat payment agent`;
+    case "FiatSettled":
+      return `Payout #${a.payoutId}: ${label(a.agent)} proved ${rs(a.fiatAmount)} paid out in rupees`;
+    case "UnexplainedTransfer":
+      return `Payout #${a.payoutId}: never paid out in rupees · agent stake ${rs(a.reward)} → ${label(a.reporter)}`;
     default:
       return ev.name;
   }
@@ -108,7 +116,7 @@ export function eventSentence(ev, label, state) {
 
 /// Events that are bad news render dark; good news yellow; the rest neutral.
 export function eventTone(name) {
-  if (["FraudFlagged", "NGOFrozen", "VendorSlashed"].includes(name)) return "bad";
-  if (["ImpactVerified", "PayoutReleased", "DeliveryConfirmed", "Donated", "CrossChainDonation"].includes(name)) return "good";
+  if (["FraudFlagged", "NGOFrozen", "VendorSlashed", "UnexplainedTransfer"].includes(name)) return "bad";
+  if (["ImpactVerified", "PayoutReleased", "DeliveryConfirmed", "Donated", "CrossChainDonation", "FiatSettled", "DonationSwapped"].includes(name)) return "good";
   return "neutral";
 }
