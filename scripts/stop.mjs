@@ -14,7 +14,7 @@ for (const port of ports) {
     : execSync(`lsof -ti tcp:${port} -sTCP:LISTEN || true`, { encoding: "utf8" }).split("\n").filter(Boolean);
   for (const pid of new Set(pids)) {
     try {
-      execSync(win ? `taskkill /PID ${pid} /T /F` : `kill -9 ${pid}`, { stdio: "ignore" });
+      process.kill(Number(pid), "SIGKILL"); // works on Windows too (TerminateProcess), unlike a shelled taskkill
       console.log(`stopped port ${port} (pid ${pid})`);
       stopped++;
     } catch {}

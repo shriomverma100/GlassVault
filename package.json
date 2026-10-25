@@ -26,7 +26,8 @@
     "acceptance": "npm --prefix contracts run acceptance",
     "stop": "node scripts/stop.mjs",
     "demo:kit": "node demo/make-kit.mjs",
-    "demo:rehearse": "node e2e/demo-rehearsal.js"
+    "demo:rehearse": "node e2e/demo-rehearsal.js",
+    "share": "cloudflared tunnel --no-autoupdate --url http://localhost:5173"
   },
   "engines": {
     "node": ">=22.5"

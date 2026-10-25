@@ -21,8 +21,9 @@ const proxy = {
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: PORT, strictPort: true, proxy },
-  preview: { port: PORT, strictPort: true, proxy },
+  // .trycloudflare.com: public link through a Cloudflare tunnel (npm run share)
+  server: { port: PORT, strictPort: true, proxy, allowedHosts: [".trycloudflare.com"] },
+  preview: { port: PORT, strictPort: true, proxy, allowedHosts: [".trycloudflare.com"] },
   build: {
     rolldownOptions: {
       output: {
