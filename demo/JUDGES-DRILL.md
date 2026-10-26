@@ -31,9 +31,10 @@ Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the s
    ```
    Wait for *GlassVault is live → http://localhost:5173*. **Why:** a fresh chain means donation/payout numbers match this guide and no earlier test has frozen Shadow Trust yet.
 2. **Public link** — keep the `npm run share` window open (or start it: `npm run share`, it prints a new link). **Why:** judges can open the platform on their own phones/laptops.
-3. **Browser:** one window per role at the same time = use separate browser profiles or incognito windows (each keeps its own login), or sign out/in between steps. The Sign-in page has a **Demo accounts** panel: one click fills username + password.
-4. **Zoom 90%** on a projector. Keep a terminal open for Step 14.
-5. **When the app asks "Unlock your wallet to sign"** → type the same password → **Unlock and continue**. **Why:** the wallet key is stored encrypted in the browser; the server never sees it.
+3. **Sign-in page** (see `docs/images/sign-in.png`): left = **Continue with MetaMask** + username/password, with **Demo accounts grouped by role** underneath — click a row (it fills the form and turns yellow), then **Sign in**. Right = "What happens when you sign in" (3 steps). **Why:** judges see at once how identity works: a wallet signature, never a stored key.
+4. **Browser:** one window per role at the same time = use separate browser profiles or incognito windows (each keeps its own login), or sign out/in between steps.
+5. **Zoom 90%** on a projector. Keep a terminal open for Step 14.
+6. **When the app asks "Unlock your wallet to sign"** → type the same password → **Unlock and continue**. **Why:** the wallet key is stored encrypted in the browser; the server never sees it.
 
 ## Logins (public demo credentials, local test chains only)
 | Role | Username | Password | Who |
@@ -61,9 +62,11 @@ Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the s
 
 **Do:**
 1. Open the public link.
-2. Scroll slowly: hero → how it works → the roles → live numbers → money pipeline → Sankey flow chart → NGO cards.
+2. Point at the **flow diagram** in the first panel: 01 Donate → 02 Locked in escrow → 03 Signed invoice → 70% → 04 Beneficiaries' cards → 30%. Each step shows a **live number** from the chain; yellow dots show money moving along the lines; the watcher line drops into the challenge window.
+3. Point at the **Built on** strip: Ethereum (EVM), Solidity, OpenZeppelin, EIP-712, Sign-In with Ethereum, MetaMask.
+4. Hover a role card (its border and shadow respond, the arrow slides), then scroll: live ticker → money pipeline → Sankey flow chart → NGO cards.
 
-**You should see:** Live totals (donated, locked in escrow, paid, frozen), a pipeline of where money is right now, and each NGO's trust and proof-confidence score.
+**You should see:** The four-step flow with live totals (donated, in escrow, paid to vendors, deliveries proven), the five roles, a pipeline of where money is right now, and each NGO's trust and proof-confidence score.
 
 **Why this step:** Transparency must not need a login. Anyone can audit the whole ledger. This shows the problem statement's core promise before a single click: the money is visible, the NGO cannot hide it.
 

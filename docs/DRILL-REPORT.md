@@ -18,6 +18,16 @@ step by step, with the reason for each step. It was replayed through the real UI
 | MetaMask journey (`e2e/metamask.js`) | add chain, Sign-In with Ethereum, sign-up, donate on A, switch to B, swap + bridge, sign back in | **pass** |
 | Smoke, tours, evaluation chain, SIWE, sign-up, multi-hop, flow, attack, performance | every page and role workspace | **pass** |
 
+## Re-run after the interface refresh
+
+The interface refresh made several changes:
+- a muted yellow accent;
+- the landing page's four-step flow diagram with live numbers and a "Built on" strip;
+- a redesigned sign-in page with demo accounts grouped by role;
+- smoother page transitions, focus glow, button ripple and hover feedback.
+
+After it, the judges' drill was re-run through the public link (**14 / 14**) and every e2e suite on an isolated production build (`npm run e2e:full`: smoke, tours, evaluation chain, SIWE, MetaMask, sign-up, multi-hop, flow, red team, performance — **all pass**).
+
 ## PS 4.2 coverage in the drill
 
 | Requirement | Drill steps |

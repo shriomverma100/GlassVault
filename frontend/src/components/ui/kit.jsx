@@ -5,6 +5,7 @@ import { liquid, snappy } from "../../lib/motion";
 import { useApp, useTick } from "../../lib/store";
 import { short } from "../../lib/chain";
 import { inr } from "../../lib/format";
+import { useRipples } from "../../lib/useRipples";
 import { CheckIcon, CrossIcon, GavelIcon, HourglassIcon, SnowLockIcon } from "../icons";
 
 /// ₹ amount, Indian digit grouping (see lib/format for the one money convention).
@@ -12,23 +13,29 @@ export function Rupees({ value, className = "" }) {
   return <span className={`tabular ${className}`}>{inr(value)}</span>;
 }
 
-export function Button({ children, variant = "primary", className = "", disabled, ...rest }) {
+export function Button({ children, variant = "primary", className = "", disabled, onPointerDown, ...rest }) {
   const styles = {
     primary: "bg-obsidian text-white hover:bg-charcoal",
-    signal: "bg-signal text-obsidian hover:bg-signal-soft",
+    signal: "bg-signal text-obsidian hover:bg-signal-soft hover:shadow-[0_6px_20px_-8px_rgb(176_166_48/0.7)]",
     ghost: "bg-white text-obsidian border border-hairline hover:border-ash",
     danger: "bg-obsidian text-white hatch",
   }[variant];
+  const ripples = useRipples(variant === "primary" || variant === "danger" ? "rgb(255 255 255 / 0.32)" : "rgb(18 18 18 / 0.14)");
   return (
     <motion.button
       whileHover={disabled ? undefined : "hover"}
       whileTap={disabled ? undefined : { scale: 0.97 }}
       transition={snappy}
       disabled={disabled}
-      className={`inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-[14px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${styles} ${className}`}
+      onPointerDown={(e) => {
+        ripples.add(e);
+        onPointerDown?.(e);
+      }}
+      className={`relative inline-flex h-11 items-center justify-center gap-2 overflow-hidden rounded-full px-5 text-[14px] font-medium transition-[background-color,border-color,box-shadow] disabled:cursor-not-allowed disabled:opacity-40 ${styles} ${className}`}
       {...rest}
     >
       {children}
+      {ripples.nodes}
     </motion.button>
   );
 }

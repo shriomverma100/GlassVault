@@ -1,12 +1,14 @@
 @import "tailwindcss";
 
-/* GlassVault design tokens — white · black · yellow only. */
+/* GlassVault design tokens — white · black · a muted yellow. */
 @theme {
-  /* yellow: the single accent — means "proven / active" */
-  --color-signal: #eef22b;
-  --color-signal-soft: #f6f7a1;
-  --color-signal-mist: #fbfcdd;
-  --color-signal-deep: #c9cc12;
+  /* yellow: the single accent — means "proven / active". Muted (less saturated than a highlighter) so
+     it reads as a calm signal on bone, not a glare. */
+  --color-signal: #dcd35a;
+  --color-signal-soft: #e9e4a3;
+  --color-signal-mist: #f6f4de;
+  --color-signal-deep: #b0a630;
+
 
   /* whites */
   --color-white: #ffffff;
@@ -28,6 +30,11 @@
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, monospace;
 
+  /* every Tailwind transition-* without explicit timing uses these: soft, quick, never laggy */
+  --default-transition-duration: 220ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+
   --radius-card: 28px;
   --radius-tile: 20px;
   --radius-input: 16px;
@@ -40,6 +47,7 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     scrollbar-gutter: stable; /* no layout jump between short and long pages */
+    scroll-behavior: smooth;
   }
   ::selection {
     background: var(--color-signal);
@@ -51,17 +59,53 @@
   }
 }
 
-/* Route change: opacity-only fade so it runs on the compositor and never blocks input. */
+/* Route change: a short fade + 6px rise. Compositor-only (opacity/transform), so it never blocks input. */
 @keyframes page-enter {
-  from { opacity: 0; }
+  from { opacity: 0; transform: translateY(6px); }
 }
 .page-enter {
-  animation: page-enter 80ms ease-out;
+  animation: page-enter 240ms var(--ease-smooth) both;
+}
+/* Inputs glow softly on focus instead of snapping to a hard border. */
+input:focus, select:focus, textarea:focus {
+  box-shadow: 0 0 0 4px rgb(220 211 90 / 0.28);
+}
+input, select, textarea {
+  transition: border-color 220ms var(--ease-smooth), box-shadow 220ms var(--ease-smooth);
 }
 @media (prefers-reduced-motion: reduce) {
   .page-enter { animation: none; }
   *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }
+
+/* ── Motion: one easing for the whole platform; transform / opacity / stroke only ── */
+/* money moving along a flow connector: dashes travel toward the next step */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -40; }
+}
+.flow-dash {
+  stroke-dasharray: 2 12;
+  stroke-linecap: round;
+  animation: flow-dash 1.8s linear infinite;
+}
+/* click ripple inside buttons */
+@keyframes ripple {
+  from { transform: translate(-50%, -50%) scale(0); opacity: 0.45; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+.ripple {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: ripple 520ms ease-out forwards;
+}
+/* a node that is "holding" money breathes */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.35); opacity: 0; }
+}
+.breathe { transform-origin: center; transform-box: fill-box; animation: breathe 2.4s ease-out infinite; }
 
 @utility hairline {
   border-color: var(--color-hairline);

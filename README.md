@@ -206,6 +206,7 @@ login, and a "Next for you" strip listing exactly what needs them now.
 
 | | |
 |---|---|
+| <img src="docs/images/sign-in.png" alt="Sign in with MetaMask or a password; demo accounts grouped by role" width="440"><br/>**Sign in** — MetaMask (Sign-In with Ethereum) or a password wallet; demo accounts by role | <img src="docs/images/landing.png" alt="Landing: four-step flow with live numbers" width="440"><br/>**How a rupee moves** — four steps, live numbers from the chain |
 | <img src="docs/images/fund-flow.png" alt="Money pipeline and Sankey of where the money went" width="440"><br/>**Live fund flow** — money pipeline and Sankey from donor to vendor | <img src="docs/images/multihop-journey.png" alt="Journey of a donation: ETH swapped, bridged, paid in rupees" width="440"><br/>**Multi-hop journey** — ETH → swap → bridge → fiat agent → rupees |
 | <img src="docs/images/vendor-invoice.png" alt="Vendor signing an invoice with a receipt photo" width="440"><br/>**Vendor** signs the exact fields + receipt hash | <img src="docs/images/field-cards.png" alt="Field partner issuing QR cards" width="440"><br/>**Field partner** issues QR cards — keys never leave the card |
 | <img src="docs/images/prepare-payout.png" alt="NGO preparing a payout with live pre-checks" width="440"><br/>**NGO** pays only after every pre-check passes | <img src="docs/images/freeze-frame.png" alt="Freeze Frame after automatic freeze" width="440"><br/>**Automatic freeze** — no human pressed a button |

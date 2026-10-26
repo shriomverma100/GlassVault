@@ -11,16 +11,10 @@ import ProofSpine from "../components/ProofSpine";
 import { CountUp, Funnel, HBars } from "../components/viz";
 import { fraudByReason, pipeline } from "../components/viz/data";
 import SankeyFlow from "../components/explore/SankeyFlow";
+import FlowDiagram from "../components/explore/FlowDiagram";
+import { BuiltOn } from "../components/brand";
 import { ScaleIcon, VaultIcon, FingerprintIcon, InvoiceIcon, QrIcon, CrossIcon, CheckIcon, EyeIcon, UploadIcon, ShieldCheckIcon } from "../components/icons";
 import { HOME } from "../lib/wallet";
-
-// How a rupee moves — the four-step promise, in the order it happens.
-const HOW = [
-  { n: "01", title: "Donate with a purpose", text: "Your gift becomes a tagged lot: Water, Medical or Education, with a deadline." },
-  { n: "02", title: "Locked in escrow", text: "A smart contract holds it. No person — not the NGO, not us — can move it." },
-  { n: "03", title: "Signed invoice → 70%", text: "A staked vendor signs the bill. After a public challenge window, 70% is released." },
-  { n: "04", title: "Beneficiaries' cards → 30%", text: "People confirm delivery with QR cards. Only then is the last 30% paid." },
-];
 
 const ROLES = [
   { kind: "Donor", icon: <VaultIcon />, title: "Donor", text: "Give for a purpose, follow every rupee, vote on disputes, get unspent money back." },
@@ -53,7 +47,7 @@ export default function Explore() {
   return (
     <motion.div variants={stagger()} initial="hidden" animate="show">
       <motion.div variants={fadeUp}>
-        <Hero user={user} />
+        <Hero user={user} stats={s} format={fmtInr} />
       </motion.div>
 
       <motion.section variants={fadeUp} className="flex flex-wrap items-end justify-between gap-10 border-t border-hairline pt-10 pb-8">
@@ -135,62 +129,69 @@ export default function Explore() {
 }
 
 /// First screen for a first-time visitor (or judge): what this is, how money moves, and where you fit.
-function Hero({ user }) {
+function Hero({ user, stats, format }) {
   return (
-    <section data-tour="landing-hero" className="pt-10 pb-10">
-      <div className="flex flex-wrap items-end justify-between gap-8">
-        <div className="max-w-[760px]">
-          <span className="inline-flex items-center gap-2 rounded-full bg-signal px-3 py-1 text-[13px] font-medium text-obsidian">
-            <ShieldCheckIcon size={14} /> Verifiable NGO fund flows
-          </span>
-          <h1 className="mt-4 font-display text-[56px] leading-[1.02] font-normal tracking-tight">Every rupee, provable.</h1>
-          <p className="mt-4 text-[17px] leading-relaxed text-ash">
-            Donated money sits in a smart contract and moves only when proof moves — a vendor-signed invoice, then beneficiaries confirming delivery. Fraud is caught
-            and the escrow frozen by code, not by an auditor.
-          </p>
+    <section data-tour="landing-hero" className="pt-8 pb-10">
+      <div className="relative overflow-hidden rounded-[var(--radius-card)] border border-hairline bg-paper px-8 pt-9 pb-8">
+        <div className="relative flex flex-wrap items-end justify-between gap-8">
+          <div className="max-w-[760px]">
+            <span className="inline-flex items-center gap-2 rounded-full bg-signal px-3 py-1 text-[13px] font-medium text-obsidian">
+              <ShieldCheckIcon size={14} /> Verifiable NGO fund flows
+            </span>
+            <h1 className="mt-4 font-display text-[60px] leading-[1.0] font-normal tracking-tight">
+              Every rupee, provable.
+            </h1>
+            <p className="mt-5 text-[17px] leading-relaxed text-ash">
+              Donated money sits in a smart contract and moves only when proof moves — a vendor-signed invoice, then beneficiaries confirming delivery. Fraud is caught
+              and the escrow frozen by code, not by an auditor.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            {user ? (
+              <Link to={HOME[user.kind]}>
+                <Button variant="signal">Go to my workspace</Button>
+              </Link>
+            ) : (
+              <>
+                <Link to="/signup">
+                  <Button variant="signal">Create an account</Button>
+                </Link>
+                <Link to="/login">
+                  <Button variant="ghost">Sign in</Button>
+                </Link>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex gap-3">
-          {user ? (
-            <Link to={HOME[user.kind]}>
-              <Button variant="signal">Go to my workspace</Button>
-            </Link>
-          ) : (
-            <>
-              <Link to="/signup">
-                <Button variant="signal">Create an account</Button>
-              </Link>
-              <Link to="/login">
-                <Button variant="ghost">Sign in</Button>
-              </Link>
-            </>
-          )}
+        <BuiltOn className="relative mt-6" />
+
+        <div data-tour="landing-how" className="relative mt-10 xl:mb-16">
+          <div className="mb-4 text-[13px] font-medium text-ash">How one rupee moves — live numbers from the chain</div>
+          <FlowDiagram stats={stats} format={format} />
         </div>
       </div>
 
-      <ol data-tour="landing-how" className="mt-8 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {HOW.map((h, i) => (
-          <li key={h.n} className={`relative rounded-[var(--radius-tile)] border p-5 ${i === 3 ? "border-signal-deep bg-signal-mist" : "border-hairline bg-paper"}`}>
-            <div className="font-mono text-[13px] text-graphite">{h.n}</div>
-            <div className="mt-1 text-[16px] font-medium">{h.title}</div>
-            <p className="mt-1 text-[14px] leading-snug text-ash">{h.text}</p>
-          </li>
-        ))}
-      </ol>
-
-      <div data-tour="landing-roles" className="mt-8">
+      <div data-tour="landing-roles" className="mt-10">
         <div className="mb-3 text-[13px] font-medium text-ash">{user ? "Everyone on GlassVault" : "Choose how you take part"}</div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {ROLES.map((r) => {
             const mine = user?.kind === r.kind;
             const to = user ? (mine ? HOME[r.kind] : null) : "/signup";
             const body = (
-              <div className={`flex h-full flex-col rounded-[var(--radius-tile)] border p-5 transition-colors ${mine ? "border-obsidian bg-white" : "border-hairline bg-paper"} ${to ? "hover:border-ash/40" : ""}`}>
+              <div
+                className={`group flex h-full flex-col rounded-[var(--radius-tile)] border p-5 transition-[border-color,box-shadow] duration-200 ${mine ? "border-obsidian bg-white" : "border-hairline bg-paper"} ${to ? "hover:border-ash/40 hover:shadow-[0_14px_34px_-24px_rgb(18_18_18/0.35)]" : ""}`}
+              >
                 <div className="flex items-center gap-3">
-                  <IconOrb size={36}>{r.icon}</IconOrb>
+                  <span className="rounded-full ring-0 ring-signal-deep/60 transition-[box-shadow] duration-200 group-hover:ring-4">
+                    <IconOrb size={36}>{r.icon}</IconOrb>
+                  </span>
                   <span className="text-[16px] font-medium">{r.title}</span>
                 </div>
                 <p className="mt-3 flex-1 text-[14px] leading-snug text-ash">{r.text}</p>
-                <span className="mt-4 text-[14px] font-medium">{user ? (mine ? "Your workspace →" : "Another role") : `Join as ${r.title.startsWith("NGO") ? "NGO" : r.title.split(" /")[0].toLowerCase()} →`}</span>
+                <span className="mt-4 inline-flex items-center gap-1 text-[14px] font-medium">
+                  {user ? (mine ? "Your workspace" : "Another role") : `Join as ${r.title.startsWith("NGO") ? "NGO" : r.title.split(" /")[0].toLowerCase()}`}
+                  {to && <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>}
+                </span>
               </div>
             );
             return to ? (
