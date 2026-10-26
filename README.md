@@ -13,7 +13,7 @@
 ![ethers](https://img.shields.io/badge/ethers-v6-2535A0)
 ![Contract tests](https://img.shields.io/badge/contract%20tests-64%20passing-brightgreen)
 ![PS acceptance](https://img.shields.io/badge/PS%204.2%20acceptance-12%2F12-brightgreen)
-![Judges drill](https://img.shields.io/badge/judges%20drill%20%28live%20link%29-14%2F14-brightgreen)
+![Judges drill](https://img.shields.io/badge/judges%20drill%20%28live%20link%29-15%2F15-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 CASCADE '26 · Theme 4 · **PS 4.2 — The Black Hole Ledger: Verifiable NGO Fund Flows**
@@ -30,7 +30,7 @@ CASCADE '26 · Theme 4 · **PS 4.2 — The Black Hole Ledger: Verifiable NGO Fun
 
 ## Contents
 
-[The problem](#the-problem) · [What GlassVault does](#what-glassvault-does) · [How a rupee moves](#how-a-rupee-moves) · [Architecture](#architecture) · [Blockchain stack — and why](#blockchain-stack--and-why) · [Fraud detection](#fraud-detection-without-a-central-auditor) · [Probabilistic evaluation chain](#probabilistic-evaluation-chain) · [Roles](#roles) · [Screens](#screens) · [Quality](#quality-and-proof) · [Getting started](#getting-started) · [Repository layout](#repository-layout) · [Security](#security-and-honest-limitations) · [Roadmap](#roadmap)
+[The problem](#the-problem) · [What GlassVault does](#what-glassvault-does) · [How a rupee moves](#how-a-rupee-moves) · [Architecture](#architecture) · [Blockchain stack — and why](#blockchain-stack--and-why) · [Fraud detection](#fraud-detection-without-a-central-auditor) · [Verify it yourself](#verify-it-yourself--no-trust-in-glassvault) · [Probabilistic evaluation chain](#probabilistic-evaluation-chain) · [Roles](#roles) · [Screens](#screens) · [Quality](#quality-and-proof) · [Getting started](#getting-started) · [Repository layout](#repository-layout) · [Security](#security-and-honest-limitations) · [Roadmap](#roadmap)
 
 ## The problem
 
@@ -175,6 +175,19 @@ Deep dive: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — payout state machine
 and donors reclaim every unpaid rupee — or anyone pulls the **dead-man switch** to move it to the
 donor's fallback NGO.
 
+## Verify it yourself — no trust in GlassVault
+
+The PS starts from donors having *no independently verifiable way* to check. The **Verify** page (`/verify`, public, no login) is that way:
+
+- **Drop a receipt** → your browser hashes it (keccak-256) and asks the contract which payout committed that fingerprint: status, amount, vendor, deliveries, nullifier, fraud flags.
+- **A re-scanned copy** (new hash) is still recognised: committed receipt files are fetched, **re-hashed in the browser and checked against the contract**, then compared by image fingerprint (dHash) locally. A lying server could hide a file, never fake one.
+- **Audit a payout** → its full event history (blocks, transactions) from the chain's event log.
+- **NGO status** → frozen / flags / trust, straight from contract storage.
+
+Every verdict comes from the blockchain node, read by the visitor's browser — GlassVault's database, indexer and API are not consulted. Tested by `e2e/verify.js` and act 15 of the judges' drill.
+
+<img src="docs/images/verify.png" alt="Verify it yourself: receipt checked against the chain" width="900">
+
 ## Probabilistic evaluation chain
 
 <img src="docs/images/evaluation-chain.png" alt="Passport showing four stage probabilities and the chain confidence" width="900">
@@ -221,8 +234,8 @@ login, and a "Next for you" strip listing exactly what needs them now.
 | Problem-statement acceptance suite — each PS 4.2 requirement on real contract execution | **12 / 12** | `npm run acceptance` |
 | Red-team benchmark — 100 receipts, 30% fraudulent | **30 / 30 caught · 0 / 70 false alarms** | `npm run benchmark` |
 | End-to-end browser suites on an isolated production build (smoke, tours, evaluation chain, Sign-In with Ethereum, MetaMask journey, sign-up, multi-hop, flow, red-team, performance) | **all passing** | `npm run e2e:full` |
-| Judges' demo — 14 acts, every role, every PS requirement | **9 / 9 requirements covered** | `npm run demo:rehearse` |
-| **Live drill through the public link** (26 Oct 2026) — the judges' sequence, all roles, plus every e2e suite against the hosted URL | **14 / 14 steps · all suites pass** | [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md) |
+| Judges' demo — 15 acts, every role, every PS requirement | **9 / 9 requirements covered** | `npm run demo:rehearse` |
+| **Live drill through the public link** (26 Oct 2026) — the judges' sequence, all roles, plus every e2e suite against the hosted URL | **15 / 15 steps · all suites pass** | [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md) |
 | Escrow invariant — vault balance = lots + reserved + bonds + stakes + challenge bonds | **gap ₹0** | live in Watchtower |
 | UI responsiveness — page switch / scroll lag | **~115 ms / 0 ms** (from 1.5 s / 720 ms) | `npm run perf` |
 | Independent security review | 2 high + 4 medium found → **all fixed with regression tests** | see [SECURITY.md](SECURITY.md) |

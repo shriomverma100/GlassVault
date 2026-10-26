@@ -11,12 +11,13 @@ step by step, with the reason for each step. It was replayed through the real UI
 
 | Run | What it exercises | Result |
 |---|---|---|
-| Judges' drill (`e2e/demo-rehearsal.js`) | 14 steps, all 5 roles, both NGOs: earmarked donation with fallback, MetaMask ETH swap → bridge, signed invoice + receipt, QR cards, payout, challenge window, 70% / 30% release, card-signed delivery, fiat off-ramp, re-scanned duplicate, donor court, auto-freeze, dead-man redirect, reconciler, 100-receipt benchmark | **14 / 14 steps · 9 / 9 PS requirements** |
+| Judges' drill (`e2e/demo-rehearsal.js`) | 15 steps, all 5 roles, both NGOs: earmarked donation with fallback, MetaMask ETH swap → bridge, signed invoice + receipt, QR cards, payout, challenge window, 70% / 30% release, card-signed delivery, fiat off-ramp, re-scanned duplicate, donor court, auto-freeze, dead-man redirect, reconciler, 100-receipt benchmark, trustless Verify page | **15 / 15 steps · 9 / 9 PS requirements** |
 | PS acceptance (`npm run acceptance`) | each PS 4.2 requirement on real contract execution | **12 / 12** |
 | Red-team benchmark (in the drill, step 14) | 100 receipts, 30% fraudulent | **30 / 30 caught · 0 / 70 false alarms** |
 | Escrow invariant (end of drill) | vault balance = lots + reserved + bonds + stakes | **gap ₹0** |
 | MetaMask journey (`e2e/metamask.js`) | add chain, Sign-In with Ethereum, sign-up, donate on A, switch to B, swap + bridge, sign back in | **pass** |
 | Smoke, tours, evaluation chain, SIWE, sign-up, multi-hop, flow, attack, performance | every page and role workspace | **pass** |
+| Verify it yourself (`e2e/verify.js`) | exact receipt found on-chain; re-scanned copy (re-encoded, brighter, cropped) recognised; unknown file rejected; payout audit and NGO status from contract storage | **pass** |
 
 ## Re-run after the interface refresh
 
@@ -39,7 +40,8 @@ After it, the judges' drill was re-run through the public link (**14 / 14**) and
 | Multi-hop: swapped, bridged, off-chain fiat | 2, 9 |
 | Adversary double-counts one piece of evidence | 10, 12, 13 |
 | Adversary forges 30% of receipts | 12, 14 |
-| Detect duplication + freeze without a central auditor | 10, 11, 12 |
+| Detect duplication + freeze without a central auditor | 10, 11, 12, 15 |
+| Independently verifiable (browser ↔ chain, no GlassVault server) | 15 |
 | Probabilistic evaluation chain | 8 |
 
 ## Found and fixed during the drill

@@ -286,6 +286,22 @@ await page.screenshot({ path: shot("act14-benchmark"), fullPage: false });
 act("100 receipts, 30% forged → 30/30 caught, 0 false alarms; escrow ledger: every rupee accounted for (gap ₹0)", ["P7", "P4"], ["Watcher"]);
 await page.context().close();
 
+// ── Act 15 · anyone verifies it themselves, straight from the chain (no GlassVault server) ──
+page = await open(null, "/verify");
+await page.getByText(/^#\d+$/).first().waitFor({ timeout: 15_000 });
+const verifyDrop = async (file) => {
+  await page.locator('input[type="file"]').setInputFiles(kit(file));
+  await page.getByText("Hashing and reading the chain…").waitFor({ state: "detached", timeout: 60_000 });
+};
+await verifyDrop("BW-2001-handpumps.png");
+await page.getByText(`This exact file backs payout #${payout.id} — Completed`).waitFor({ timeout: 30_000 });
+await verifyDrop("BW-2001-rescan-as-BW-2077.png");
+await page.getByText(`This exact file backs payout #${fraud.id} — Cancelled`).waitFor({ timeout: 30_000 });
+await page.getByText("Frozen by contract").first().waitFor({ timeout: 15_000 });
+await page.screenshot({ path: shot("act15-verify"), fullPage: true });
+act(`Verify page (browser ↔ chain only): BW-2001 backs payout #${payout.id} (Completed); the re-scan backs cancelled payout #${fraud.id}; Shadow Trust frozen`, ["P2", "P6", "P8"], ["Anyone"]);
+await page.context().close();
+
 await browser.close();
 console.log("\n  PS 4.2 coverage in this demo");
 let gaps = 0;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { LogoMark, EyeIcon, VaultIcon, InvoiceIcon, ShieldCheckIcon, WalletIcon, DropletIcon, QrIcon, UploadIcon } from "./icons";
+import { LogoMark, EyeIcon, VaultIcon, InvoiceIcon, ShieldCheckIcon, WalletIcon, DropletIcon, QrIcon, UploadIcon, FingerprintIcon } from "./icons";
 import { liquid, snappy } from "../lib/motion";
 import { useApp } from "../lib/store";
 import { short } from "../lib/chain";
@@ -15,16 +15,17 @@ const ITEM = {
   vendor: { to: "/vendor", label: "Invoices", icon: <UploadIcon /> },
   field: { to: "/field", label: "Deliveries", icon: <QrIcon /> },
   watchtower: { to: "/watchtower", label: "Watchtower", icon: <EyeIcon /> },
+  verify: { to: "/verify", label: "Verify", icon: <FingerprintIcon /> },
 };
 
-// Each account sees its own workspace first; Explore, Passports and Watchtower are public to everyone.
+// Each account sees its own workspace first; Explore, Passports, Watchtower and Verify are public to everyone.
 const NAV = {
-  public: ["explore", "passports", "watchtower"],
-  Donor: ["explore", "donate", "myDonations", "watchtower"],
-  NGO: ["ngo", "explore", "passports", "watchtower"],
-  Vendor: ["vendor", "explore", "watchtower"],
-  Field: ["field", "explore", "watchtower"],
-  Watcher: ["watchtower", "explore", "passports"],
+  public: ["explore", "passports", "watchtower", "verify"],
+  Donor: ["explore", "donate", "myDonations", "watchtower", "verify"],
+  NGO: ["ngo", "explore", "passports", "watchtower", "verify"],
+  Vendor: ["vendor", "explore", "watchtower", "verify"],
+  Field: ["field", "explore", "watchtower", "verify"],
+  Watcher: ["watchtower", "explore", "passports", "verify"],
 };
 
 const H = 88;
