@@ -19,6 +19,7 @@ const Field = lazy(() => import("./pages/Field"));
 const Watchtower = lazy(() => import("./pages/Watchtower"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
+const Verify = lazy(() => import("./pages/Verify"));
 
 function Pages() {
   const location = useLocation();
@@ -46,6 +47,7 @@ function Pages() {
           <Route path="/vendor" element={<Vendor />} />
           <Route path="/field" element={<Field />} />
           <Route path="/watchtower" element={<Watchtower />} />
+          <Route path="/verify" element={<Verify />} />
           <Route path="*" element={<div className="grid h-[50vh] place-items-center text-[15px] text-ash">Page not found.</div>} />
         </Routes>
       </Suspense>

@@ -1,6 +1,6 @@
 # GlassVault — Judges' Drill (step by step, with reasons)
 
-Tested end-to-end through the public link on 26 Oct 2026: **all 14 steps passed, all 9 PS requirements covered** (report: [docs/DRILL-REPORT.md](../docs/DRILL-REPORT.md)).
+Tested end-to-end through the public link on 26 Oct 2026: **all 15 steps passed, all 9 PS requirements covered** (report: [docs/DRILL-REPORT.md](../docs/DRILL-REPORT.md)).
 
 **Live link:** https://fly-feed-singles-three.trycloudflare.com  
 **Repo:** https://github.com/shriomverma100/GlassVault
@@ -8,7 +8,7 @@ Tested end-to-end through the public link on 26 Oct 2026: **all 14 steps passed,
 ## The story you are telling
 > A donor gives money earmarked for **water**. It is swapped, bridged and finally spent in rupees by a village vendor. Every hop is traced, every rupee is tied to a signed receipt, beneficiaries prove delivery without revealing who they are — and when a cheating NGO reuses one receipt and forges others, the contract freezes it by itself.
 
-Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the system defeats it.
+Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the system defeats it. Step 15 = anyone verifies it all themselves, straight from the chain.
 
 ## What is in this folder
 | Folder / file | What it is | Used in |
@@ -369,17 +369,43 @@ Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the s
 ![Step 14](shots/act14-benchmark.png)
 
 ---
+## Step 15 — Don't trust us — verify it yourself (trustless check)
+
+*Story:* A judge asks: "Your server shows all this. What if your server lies?" Hand them the Verify page.
+
+**Login:** Anyone — no login (ideally the judge, on their own phone or laptop) · **Page:** Verify (top menu) · `/verify`
+
+**Do:**
+1. Open **Verify**. Point at the 4 facts on top: source = blockchain node, contract address, chain id, **live block number** ticking.
+2. Drop **kit/BW-2001-handpumps.png** → *This exact file backs payout #… — Completed*, with amount, vendor, deliveries 3/3 and the invoice nullifier.
+3. Drop **kit/BW-2001-rescan-as-BW-2077.png** → it backs the **Cancelled** payout of Shadow Trust (the fraud from Step 10).
+4. Optional: drop any other image → *No payment on the chain is backed by this file*.
+5. Section 2: type the payout number → **Read it from the chain** → its full event history with block numbers and transaction hashes.
+6. Section 3: Shadow Trust shows **Frozen by contract**.
+
+**You should see:** Every verdict is computed in the browser from the chain node: the file is hashed locally (keccak-256) and compared with the fingerprint the contract stored.
+
+**Why this step:** The PS starts with: donors have *no independently verifiable way* to check. This page is that way. Our database, indexer and API are not used for any answer. The server is only used to *locate* receipt files for the look-alike check, and each file is re-hashed in the browser and must match the contract — so a lying server could hide a file but never fake one. If GlassVault disappeared, the checks still work against the chain.
+
+**Say to the judges:** “Don't trust our dashboard. Drop the receipt here: your browser hashes it and asks the blockchain directly. No GlassVault server is involved in the answer.”
+
+**PS point:** Independent verification · Verifiable expenditure · Double-counting · Freeze without an auditor
+
+![Step 15](shots/act15-verify.png)
+
+---
 ## PS 4.2 coverage
 | Requirement | Steps |
 |---|---|
 | Purpose-bound allocation | 2, 3, 6, 7, 12 |
-| Verifiable expenditure records (on-chain ↔ off-chain receipts) | 4, 6, 9 |
+| Verifiable expenditure records (on-chain ↔ off-chain receipts) | 4, 6, 9, 15 |
 | Privacy protection + proof of delivery | 5, 8 |
 | Discrepancy detection (transfers, categories, reports vs chain) | 13, 14 |
 | Multi-hop: swapped, bridged, off-chain fiat | 2, 9 |
-| Adversary double-counts one piece of evidence | 10, 12, 13 |
+| Adversary double-counts one piece of evidence | 10, 12, 13, 15 |
 | Adversary forges 30% of receipts | 12, 14 |
-| Detect + freeze escrow without a central auditor | 10, 11, 12 |
+| Detect + freeze escrow without a central auditor | 10, 11, 12, 15 |
+| Independently verifiable (no trust in GlassVault) | 15 |
 | Probabilistic evaluation chain | 8 |
 
 ## Closing line
@@ -397,7 +423,7 @@ Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the s
 ## Test evidence (all through the public link, 26 Oct 2026)
 | Test | Result |
 |---|---|
-| Full judges drill (`drill-run.log`) | 14/14 steps ✔, 9/9 PS requirements |
+| Full judges drill (`drill-run.log`) | 15/15 steps ✔, 9/9 PS requirements |
 | PS acceptance (`acceptance.log`) | 12/12 requirements met |
 | MetaMask sign-in, sign-up, donate, swap+bridge (`metamask.log`) | ✔ |
 | Smoke, tour, confidence, SIWE, signup, multihop, flow, attack, perf | ✔ each (see logs) |
