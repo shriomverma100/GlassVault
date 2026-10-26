@@ -27,6 +27,7 @@
     "stop": "node scripts/stop.mjs",
     "demo:kit": "node demo/make-kit.mjs",
     "demo:rehearse": "node e2e/demo-rehearsal.js",
+    "demo:drill": "node e2e/drill-mode.js",
     "share": "node scripts/share.mjs"
   },
   "engines": {

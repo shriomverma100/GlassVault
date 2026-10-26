@@ -14,7 +14,7 @@ export default function FreezeFrame() {
   return (
     <AnimatePresence>
       {frozenAlert && (
-        <motion.div className="fixed inset-0 z-[70] grid place-items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+        <motion.div data-overlay="freeze" className="fixed inset-0 z-[70] grid place-items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           {/* solid scrim, opacity only: a full-screen backdrop blur + animated clip-path repaints every frame */}
           <motion.div className="absolute inset-0 bg-obsidian/90" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} />
           <motion.div

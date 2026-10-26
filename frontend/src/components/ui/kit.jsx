@@ -211,6 +211,7 @@ export function Drawer({ open, onClose, title, children }) {
         <>
           <motion.div className="fixed inset-0 z-40 bg-obsidian/30" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.aside
+            data-overlay="drawer"
             className="fixed top-0 right-0 z-50 flex h-full w-[520px] max-w-full flex-col border-l border-hairline bg-paper"
             initial={{ x: 540 }}
             animate={{ x: 0 }}

@@ -224,6 +224,7 @@ login, and a "Next for you" strip listing exactly what needs them now.
 | <img src="docs/images/vendor-invoice.png" alt="Vendor signing an invoice with a receipt photo" width="440"><br/>**Vendor** signs the exact fields + receipt hash | <img src="docs/images/field-cards.png" alt="Field partner issuing QR cards" width="440"><br/>**Field partner** issues QR cards — keys never leave the card |
 | <img src="docs/images/prepare-payout.png" alt="NGO preparing a payout with live pre-checks" width="440"><br/>**NGO** pays only after every pre-check passes | <img src="docs/images/freeze-frame.png" alt="Freeze Frame after automatic freeze" width="440"><br/>**Automatic freeze** — no human pressed a button |
 | <img src="docs/images/reconciler.png" alt="Report reconciler flagging double counting" width="440"><br/>**Report Reconciler** — published claims vs the chain | <img src="docs/images/benchmark.png" alt="Benchmark: 30 of 30 frauds caught" width="440"><br/>**Benchmark** — 100 receipts, 30% forged |
+| <img src="docs/images/drill-panel.png" alt="In-app judges drill panel: one-click role switch, copyable values, upload files" width="440"><br/>**In-app Drill** — every role, every upload, ticked off from the chain | <img src="docs/images/verify.png" alt="Verify it yourself page" width="440"><br/>**Verify it yourself** — browser ↔ chain, no server trust |
 | <img src="docs/images/metamask-eth-donation.png" alt="MetaMask donor gives ETH on chain B" width="440"><br/>**MetaMask** donor gives ETH on chain B | <img src="docs/images/guided-tour.png" alt="Role-based guided tour" width="440"><br/>**Guided tour** per role |
 
 ## Quality and proof
@@ -236,6 +237,7 @@ login, and a "Next for you" strip listing exactly what needs them now.
 | End-to-end browser suites on an isolated production build (smoke, tours, evaluation chain, Sign-In with Ethereum, MetaMask journey, sign-up, multi-hop, flow, red-team, performance) | **all passing** | `npm run e2e:full` |
 | Judges' demo — 15 acts, every role, every PS requirement | **9 / 9 requirements covered** | `npm run demo:rehearse` |
 | **Live drill through the public link** (26 Oct 2026) — the judges' sequence, all roles, plus every e2e suite against the hosted URL | **15 / 15 steps · all suites pass** | [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md) |
+| **In-app Drill** — the judges' drill performed through its own panel (22 steps, every role, uploads, card keys) | **22 / 22 · detected on-chain** | `npm run demo:drill` |
 | Escrow invariant — vault balance = lots + reserved + bonds + stakes + challenge bonds | **gap ₹0** | live in Watchtower |
 | UI responsiveness — page switch / scroll lag | **~115 ms / 0 ms** (from 1.5 s / 720 ms) | `npm run perf` |
 | Independent security review | 2 high + 4 medium found → **all fixed with regression tests** | see [SECURITY.md](SECURITY.md) |
@@ -256,7 +258,7 @@ npm run start:prod        # 2 chains → deploy → backend → seeded history �
 Sign in with a demo account (local chains only — the **Sign in** page lists them with one-click fill),
 or create your own account with a password or **MetaMask**. The judges' walkthrough is in
 [demo/DEMO-RUNBOOK.md](demo/DEMO-RUNBOOK.md); the step-by-step drill with the reason for every step is
-[demo/JUDGES-DRILL.md](demo/JUDGES-DRILL.md), and the drill results are in [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md).
+[demo/JUDGES-DRILL.md](demo/JUDGES-DRILL.md) — and the same drill is built into the app: the yellow **Drill** button (above **Tour**) walks every role, switches accounts in one click, offers the upload files and ticks each step off when the chain confirms it, and the drill results are in [docs/DRILL-REPORT.md](docs/DRILL-REPORT.md).
 
 | Command | What it does |
 |---|---|

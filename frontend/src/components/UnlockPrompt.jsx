@@ -30,7 +30,7 @@ function Prompt({ user }) {
   }
 
   return (
-    <div className="page-enter fixed inset-0 z-[80] grid place-items-center bg-obsidian/40" role="dialog" aria-modal="true" aria-labelledby="unlock-title">
+    <div data-overlay="unlock" className="page-enter fixed inset-0 z-[80] grid place-items-center bg-obsidian/40" role="dialog" aria-modal="true" aria-labelledby="unlock-title">
       <form onSubmit={submit} onKeyDown={(e) => e.key === "Escape" && cancelUnlock()} className="w-[420px] max-w-[92vw] rounded-[var(--radius-card)] border border-hairline bg-paper p-8">
         <h2 id="unlock-title" className="font-display text-[28px] leading-tight font-normal">
           Unlock your wallet to sign

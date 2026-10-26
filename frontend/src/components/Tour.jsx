@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../lib/store";
 import { tourFor, tourKey } from "../lib/tours";
+import { drillActive } from "../lib/drill";
 
 const seen = (key) => {
   try {
@@ -54,7 +55,7 @@ export default function Tour() {
 
   // first visit for this account (or guest) → start once the app has loaded
   useEffect(() => {
-    if (!authReady || !state || navigator.webdriver || seen(key)) return;
+    if (!authReady || !state || navigator.webdriver || seen(key) || drillActive()) return;
     const id = setTimeout(start, 700);
     return () => clearTimeout(id);
   }, [authReady, state, key, start]);
@@ -104,12 +105,12 @@ export default function Tour() {
     return () => cancelAnimationFrame(raf);
   }, [current, pathname, navigate]);
 
-  // keyboard: Esc skips, ← → navigate
+  // keyboard: Esc skips, ← → navigate, Enter = next
   useEffect(() => {
     if (step === null) return;
     const onKey = (e) => {
       if (e.key === "Escape") close();
-      if (e.key === "ArrowRight") {
+      if (e.key === "ArrowRight" || (e.key === "Enter" && !["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(document.activeElement?.tagName))) {
         if (step < steps.length - 1) setStep(step + 1);
         else close();
       }

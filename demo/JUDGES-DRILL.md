@@ -23,6 +23,19 @@ Steps 1–9 = the honest water project. Steps 10–14 = the attack and how the s
 | `workspace-views/` | every page of every role (from the automated tests) | backup slides |
 | `test-evidence/` | logs of every test run through the public link | proof for judges |
 
+## The fastest way: the Drill button in the app
+Click the yellow **Drill** button (bottom-right, just above **Tour**). A panel docks on the right and walks you through all 22 steps of this guide:
+- **Sign in as …** — one click switches to the right role for each step.
+- **Do** — exactly what to click, with **Copy** buttons for every value (invoice numbers, item names, labels, amounts).
+- **Upload** — the receipt files, downloadable right from the panel.
+- **Card keys** — captured when the field partner issues the cards, offered back with Copy at the delivery step.
+- **Done — detected on the chain** — each step ticks itself off when the contract confirms it.
+- **Enter** or → = next · ← = back · Esc = close (your place is kept, even across reloads). The panel steps aside while a drawer, the freeze screen or the unlock prompt is open.
+
+Tested: the whole drill performed through the panel, 22 / 22 (`npm run demo:drill`). See `demo/shots/drill-panel-*.png`.
+
+![Drill panel](shots/drill-panel-invoice.png)
+
 ## Step 0 — before the judges arrive (5 min)
 1. **Reset the platform** (fresh chains, fresh data) — in a terminal in `glassvault`:
    ```

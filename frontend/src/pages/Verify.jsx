@@ -157,6 +157,7 @@ function ReceiptCheck({ chain }) {
   return (
     <Section eyebrow="1 · Is this receipt really behind a payment?" title="Drop a receipt">
       <label
+        data-tour="verify-drop"
         onDragOver={(e) => (e.preventDefault(), setDrag(true))}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => (e.preventDefault(), setDrag(false), check(e.dataTransfer.files[0]))}

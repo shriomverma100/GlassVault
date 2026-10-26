@@ -17,6 +17,7 @@ step by step, with the reason for each step. It was replayed through the real UI
 | Escrow invariant (end of drill) | vault balance = lots + reserved + bonds + stakes | **gap ₹0** |
 | MetaMask journey (`e2e/metamask.js`) | add chain, Sign-In with Ethereum, sign-up, donate on A, switch to B, swap + bridge, sign back in | **pass** |
 | Smoke, tours, evaluation chain, SIWE, sign-up, multi-hop, flow, attack, performance | every page and role workspace | **pass** |
+| In-app Drill (`e2e/drill-mode.js`) | the whole drill performed through the Drill panel: one-click role switches, uploads, card keys captured by the drill and pasted back, every on-chain step detected by the panel, Enter to advance, place kept across reloads | **22 / 22** |
 | Verify it yourself (`e2e/verify.js`) | exact receipt found on-chain; re-scanned copy (re-encoded, brighter, cropped) recognised; unknown file rejected; payout audit and NGO status from contract storage | **pass** |
 
 ## Re-run after the interface refresh

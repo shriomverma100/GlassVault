@@ -5,6 +5,7 @@ import FreezeFrame from "./components/FreezeFrame";
 import NextActions from "./components/NextActions";
 import UnlockPrompt from "./components/UnlockPrompt";
 import Tour from "./components/Tour";
+import Drill from "./components/Drill";
 import { Toasts } from "./components/ui/kit";
 import { AppProvider, useApp } from "./lib/store";
 import { HOME } from "./lib/wallet";
@@ -66,6 +67,7 @@ export default function App() {
           <FreezeFrame />
           <UnlockPrompt />
           <Tour />
+          <Drill />
         </div>
       </AppProvider>
     </BrowserRouter>
